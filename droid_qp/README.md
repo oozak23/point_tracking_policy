@@ -21,6 +21,7 @@ phase); the package now also holds the whole policy.
 | `policy_train.py` | `ActionPolicy` (the full model), optimizer, schedule, checkpoints, overfit-window selection |
 | `policy_eval.py` | validation metrics, the copy-last baseline, gripper-event matching |
 | `policy_rollout.py` | chains predicted actions over time for the rollout evaluation |
+| `pose_fit.py` | gripper pose from its points (rigid fit, PnP) and the action between two poses; the points → actions experiment |
 
 ## Building the dataset (used by `pipeline/`)
 

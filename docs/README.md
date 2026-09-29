@@ -27,6 +27,12 @@ Each fixes the pass/fail criteria before the results exist, so thresholds can't 
 | `PROPRIO_PILOT_PLAN.md` | the one-epoch run with proprioception |
 | `MULTIEPOCH_PLAN.md` | the five-epoch runs |
 
+## Results of individual experiments
+
+| document | what it is |
+|---|---|
+| `POINTS_TO_ACTIONS.md` | can the action be recovered from the gripper's points? Yes with exact points, no with Track-On's |
+
 ## The earlier phase: choosing query points
 
 | document | what it is |

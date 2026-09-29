@@ -62,6 +62,7 @@ on that input; a small one does not prove the input is unused.
 | `75_stratified_scene_shuffle.py` | splits the scene-shuffle effect by frame difficulty. It first checks that it reproduces the run's reported effect; `--reuse` re-analyses saved results without a GPU | `$PY_TRACKON` |
 | `60_evaluate_rollout.py` | chains predicted actions over 20 and 40 steps and projects the gripper into the image. Reads the predictions `57` saved | `$PY_POINTWORLD` |
 | `64_compare_train_val.py` | the same checkpoint on windows it trained on vs validation windows, to tell underfitting from overfitting | `$PY_TRACKON` |
+| `83_points_to_actions.py` (job: `84_...sbatch`, CPU, ~2 min) | can the action be recovered from the gripper's points? Tests 1–4 of the points → actions experiment; results in `docs/POINTS_TO_ACTIONS.md` | `$PY_POINTWORLD` |
 | `62_report_pilot.py`, `68_report_multiepoch.py`, `72_report_proprio.py` | turn saved results into the Markdown reports and plots in each run folder | `$PY_TRACKON` |
 
 The `.sbatch` files are the exact jobs behind the reported results. `76` and `80` run `75` on

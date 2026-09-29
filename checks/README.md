@@ -10,6 +10,7 @@ for s in 45_verify_dataloader 46_verify_replica 48_verify_readout 49_verify_head
   $PY_TRACKON -B checks/$s.py || echo "FAILED: $s"
 done
 $PY_POINTWORLD -B checks/61_verify_rollout.py      # needs the kinematics env
+$PY_POINTWORLD -B checks/82_verify_pose_fit.py
 ```
 
 Most checks work **by perturbation**: change an input that must not matter and require the
@@ -28,6 +29,7 @@ missed: a memory that was never actually read, and NaN gradients from fully mask
 | `59_verify_validation.py` | baselines, gripper-event matching and shuffle-donor alignment | ~25 s |
 | `61_verify_rollout.py` | chaining actions over time is correct on a real clip (`$PY_POINTWORLD`) | ~10 s |
 | `70_verify_proprio.py` | proprioception reads only the current frame, never the next | ~20 s |
+| `82_verify_pose_fit.py` | the points → actions converter: exact recovery of known poses, agreement with the action labels (`$PY_POINTWORLD`) | ~5 s |
 
 Several checks load real clips, so they need the dataset (`PTP_DATA`).
 
