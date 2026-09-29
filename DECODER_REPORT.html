@@ -1,0 +1,548 @@
+<title>Building the Action Decoder</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@600;700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap">
+<style>
+:root{
+  --paper:#F3F5F7; --surface:#FFFFFF; --ink:#17212C; --muted:#5D6A77; --rule:#D6DCE3;
+  --teal:#1C7268; --amber:#B8700F; --slate:#8593A1;
+  --fail:#A8412E; --fail-bg:#F6E3DF; --pass:#3A7447; --pass-bg:#E1EEE3;
+  --warn:#8A6410; --warn-bg:#F4ECD8; --tint:#E9EEF2;
+  --sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --cond:"IBM Plex Sans Condensed","Arial Narrow",system-ui,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --paper:#0E141A; --surface:#151E27; --ink:#E4EAF0; --muted:#8F9DAB; --rule:#26323E;
+    --teal:#45B4A6; --amber:#E3A445; --slate:#7C8B99;
+    --fail:#E88A74; --fail-bg:#3A211C; --pass:#7FC894; --pass-bg:#1B3024;
+    --warn:#E3B45A; --warn-bg:#342A15; --tint:#1B2631;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#0E141A; --surface:#151E27; --ink:#E4EAF0; --muted:#8F9DAB; --rule:#26323E;
+  --teal:#45B4A6; --amber:#E3A445; --slate:#7C8B99;
+  --fail:#E88A74; --fail-bg:#3A211C; --pass:#7FC894; --pass-bg:#1B3024;
+  --warn:#E3B45A; --warn-bg:#342A15; --tint:#1B2631;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);
+  font-size:16px;line-height:1.6;padding:0 20px;-webkit-font-smoothing:antialiased}
+.page{max-width:62rem;margin:0 auto;padding-block:48px 72px}
+.prose{max-width:41rem}
+h1,h2,h3{font-family:var(--cond);text-wrap:balance;margin:0;line-height:1.15}
+h1{font-size:2.6rem;font-weight:700;letter-spacing:-.01em}
+h2{font-size:1.55rem;font-weight:700;margin-bottom:.6rem}
+h3{font-size:1.06rem;font-weight:600}
+p{margin:0}
+.prose > * + *{margin-top:.85rem}
+.eyebrow{font-family:var(--mono);font-size:.74rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.lede{font-size:1.12rem;margin-top:.9rem;max-width:41rem}
+.num,td.n,th.n{font-family:var(--mono);font-variant-numeric:tabular-nums}
+code{font-family:var(--mono);font-size:.86em;background:var(--tint);padding:.08em .35em;border-radius:3px}
+section{margin-top:3.2rem}
+section > h2 + .prose{margin-top:.2rem}
+a{color:var(--teal)}
+
+/* pipeline */
+.pipe{display:grid;gap:8px;margin-top:1.3rem}
+.row{display:flex;flex-wrap:wrap;align-items:stretch;gap:8px}
+.stage{flex:1 1 160px;border:1px solid var(--rule);border-radius:6px;padding:10px 12px;background:var(--surface);
+  display:flex;flex-direction:column;gap:4px;min-width:0}
+.stage .t{font-family:var(--cond);font-weight:600;font-size:1rem}
+.stage .d{font-size:.82rem;color:var(--muted);line-height:1.4}
+.stage .tag{font-family:var(--mono);font-size:.66rem;letter-spacing:.06em;text-transform:uppercase}
+.stage.frozen .tag{color:var(--slate)}
+.stage.frozen{border-style:dashed}
+.stage.trained{border-color:var(--teal)}
+.stage.trained .tag{color:var(--teal)}
+.stage.extra{border-color:var(--amber)}
+.stage.extra .tag{color:var(--amber)}
+.arrow{align-self:center;color:var(--muted);font-family:var(--mono)}
+
+/* tables */
+.tablewrap{overflow-x:auto;margin-top:1.1rem;border:1px solid var(--rule);border-radius:6px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:.92rem}
+th,td{text-align:left;padding:9px 14px;border-bottom:1px solid var(--rule);vertical-align:top}
+tr:last-child td{border-bottom:0}
+th{font-family:var(--mono);font-weight:500;font-size:.74rem;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);background:var(--tint)}
+td.n,th.n{text-align:right;white-space:nowrap;font-family:var(--mono);font-variant-numeric:tabular-nums}
+tr.hl td{background:var(--tint)}
+.chip{display:inline-block;font-family:var(--mono);font-size:.72rem;font-weight:500;letter-spacing:.04em;
+  padding:2px 8px;border-radius:999px;white-space:nowrap}
+.chip.pass{color:var(--pass);background:var(--pass-bg)}
+.chip.fail{color:var(--fail);background:var(--fail-bg)}
+.chip.warn{color:var(--warn);background:var(--warn-bg)}
+.caption{font-size:.84rem;color:var(--muted);margin-top:.6rem;max-width:44rem}
+.muted{color:var(--muted)}
+
+/* build steps */
+.steps{list-style:none;padding:0;margin:1.2rem 0 0;display:grid;gap:0;
+  border:1px solid var(--rule);border-radius:6px;background:var(--surface);overflow:hidden}
+.steps li{display:grid;grid-template-columns:2.2rem 1fr;gap:4px 14px;padding:16px 18px;border-bottom:1px solid var(--rule)}
+.steps li:last-child{border-bottom:0}
+.steps .n{font-family:var(--mono);color:var(--muted);font-size:.9rem;padding-top:.1rem}
+.steps h3{margin-bottom:.15rem}
+.steps p{font-size:.93rem}
+.steps .v{font-size:.85rem;color:var(--muted);margin-top:.4rem}
+.steps .v b{font-family:var(--mono);font-weight:500;color:var(--ink)}
+
+/* reasons */
+.why{display:grid;gap:14px;margin-top:1.1rem}
+.why > div{border-left:3px solid var(--rule);padding:2px 0 2px 16px}
+.why .q{font-family:var(--cond);font-weight:600;font-size:1.05rem}
+.why p{font-size:.93rem;margin-top:.25rem;max-width:41rem}
+
+/* formula */
+.formula{background:var(--surface);border:1px solid var(--rule);border-radius:6px;padding:16px 18px;margin-top:1.1rem;
+  font-family:var(--mono);font-size:.85rem;line-height:1.9;overflow-x:auto;white-space:pre}
+
+/* charts */
+figure{margin:1.4rem 0 0}
+.chart{background:var(--surface);border:1px solid var(--rule);border-radius:6px;padding:14px 10px 6px}
+.chart svg{width:100%;height:auto;display:block}
+.ax{stroke:var(--rule);stroke-width:1}
+.grid{stroke:var(--rule);stroke-width:1;stroke-dasharray:2 4}
+.tk{fill:var(--muted);font-family:var(--mono);font-size:11px}
+.lb{font-family:var(--mono);font-size:11.5px}
+.lb.teal{fill:var(--teal)} .lb.amber{fill:var(--amber)} .lb.muted{fill:var(--muted)}
+.ln-teal{stroke:var(--teal);stroke-width:2;fill:none}
+.ln-amber{stroke:var(--amber);stroke-width:2;fill:none}
+.pt-teal{fill:var(--teal)} .pt-amber{fill:var(--amber)}
+.bar-teal{fill:var(--teal)} .bar-amber{fill:var(--amber)}
+.inbar{fill:var(--surface);font-family:var(--mono);font-size:12px;font-weight:500}
+.ref{stroke:var(--slate);stroke-width:1.4;stroke-dasharray:6 4}
+.gate{stroke:var(--fail);stroke-width:1.4;stroke-dasharray:6 4}
+.legend{display:flex;flex-wrap:wrap;gap:16px;font-family:var(--mono);font-size:.78rem;color:var(--muted);margin:2px 6px 10px}
+.legend i{display:inline-block;width:14px;height:3px;border-radius:2px;margin-right:6px;vertical-align:middle}
+
+/* decisions */
+.decisions{list-style:none;padding:0;margin:1.1rem 0 0;display:grid;gap:0;border:1px solid var(--rule);
+  border-radius:6px;background:var(--surface);overflow:hidden}
+.decisions li{display:grid;grid-template-columns:2.4rem 1fr;gap:4px 14px;padding:16px 18px;border-bottom:1px solid var(--rule)}
+.decisions li:last-child{border-bottom:0}
+.decisions .k{font-family:var(--mono);color:var(--muted)}
+.decisions .q{font-family:var(--cond);font-weight:600;font-size:1.05rem}
+.decisions p{font-size:.93rem;margin-top:.25rem}
+
+footer{margin-top:3.4rem;padding-top:1.2rem;border-top:1px solid var(--rule);font-size:.85rem;color:var(--muted)}
+@media (max-width:640px){
+  h1{font-size:2rem}
+  .steps li,.decisions li{grid-template-columns:1fr}
+  .steps .n,.decisions .k{padding-top:0}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+
+<div class="page">
+
+<header class="prose">
+  <p class="eyebrow">Point-memory policy · 15 September 2026</p>
+  <h1>Building the Action Decoder</h1>
+  <p class="lede">How the decoder block was built and verified, which loss it trains on and why,
+    when robot proprioception was added and what it changed, and every training run and test
+    behind the current numbers.</p>
+  <p class="muted">Frozen Track-On-R turns object points into the scene memory. A trainable replica
+    of Track-On's own decoder layer carries the robot points, reads its own history, and
+    cross-attends into that scene memory. One readout query per frame becomes one action.</p>
+</header>
+
+<section>
+  <h2>The block</h2>
+  <div class="prose"><p>Two streams, one trained. Everything below the dashed box is new code;
+    Track-On stays frozen and is never back-propagated through.</p></div>
+
+  <div class="pipe">
+    <div class="row">
+      <div class="stage frozen"><span class="tag">frozen</span><span class="t">Object points</span>
+        <span class="d">100 query points per clip through Track-On-R; tokens cached as (T,&nbsp;N,&nbsp;256) fp16</span></div>
+      <span class="arrow">→</span>
+      <div class="stage frozen"><span class="tag">frozen</span><span class="t">Scene memory</span>
+        <span class="d">24 slots, the frames <code>t−23…t</code>; strictly causal</span></div>
+    </div>
+    <div class="row">
+      <div class="stage frozen"><span class="tag">input</span><span class="t">Robot points</span>
+        <span class="d">up to 128 FK points on the gripper, projected to pixels, tokenised the same way</span></div>
+      <span class="arrow">→</span>
+      <div class="stage trained"><span class="tag">trained · 3 layers</span><span class="t">Replica block</span>
+        <span class="d">self-attention across robot points → attention over its own 24-slot action FIFO, per point → cross-attention into the scene memory</span></div>
+      <span class="arrow">→</span>
+      <div class="stage trained"><span class="tag">trained</span><span class="t">Readout</span>
+        <span class="d">one learned query cross-attends over the robot points → one action token per frame</span></div>
+      <span class="arrow">→</span>
+      <div class="stage trained"><span class="tag">trained · 2,570 params</span><span class="t">Head</span>
+        <span class="d">three linear maps: Δposition (3), Δrotation 6D (6), gripper logit (1)</span></div>
+    </div>
+    <div class="row">
+      <div class="stage extra"><span class="tag">added later · 69,888 params</span><span class="t">Proprioception</span>
+        <span class="d">q, q̇ and gripper width at the current frame → 15→256→256 GELU encoder, added to the action token immediately before the head</span></div>
+    </div>
+  </div>
+
+  <div class="prose" style="margin-top:1.2rem">
+    <p><strong>Why a replica and not Track-On itself.</strong> Track-On's own layer opens with attention
+      over the whole frame feature map, because it does not know where its point is and has to search.
+      We do know — forward kinematics gives the exact pixel — so the replica drops that stage. That is what
+      makes the cached token stream sufficient and 5.3&nbsp;PB of feature maps unnecessary. The attention
+      block itself is <em>imported</em> from Track-On rather than re-implemented, so heads, MLP ratio and
+      norm placement are identical by construction.</p>
+    <p><strong>Settled configuration.</strong> D=256, 3 layers, memory M=24 and scene slots 24 (Track-On's
+      own recipe), window T_win=48, batch 16, one-step prediction (k=1) at 7.2&nbsp;Hz — the policy predicts
+      the action 0.14&nbsp;s ahead. Runs are pinned to an L40S; the shared queue otherwise mixes in T4s that
+      are ~10× slower.</p>
+  </div>
+</section>
+
+<section>
+  <h2>How it was built</h2>
+  <div class="prose"><p>Seven steps, each one verified before the next was started. Verification is by
+    <em>perturbation</em>: change an input that must not matter and require the output to be bit-identical,
+    change one that must matter and require it to move. Reading code and agreeing with it is not evidence —
+    two real defects below were invisible to reading.</p></div>
+
+  <ol class="steps">
+    <li><span class="n">1</span><div>
+      <h3>Dataloader</h3>
+      <p>Samples a 48-frame window: scene tokens (48+23, 100, 256), robot tokens (48+23, 128, 256),
+        validity masks, the 10-dimensional action target per frame, and the clip's tracking-quality weight.</p>
+      <p class="v">Verified: <b>5 checks</b> — causal slicing, padding, mask conventions, episode-level train/val split, throughput.</p>
+    </div></li>
+    <li><span class="n">2</span><div>
+      <h3>Replica block</h3>
+      <p>Point attention → per-point memory attention → scene cross-attention.</p>
+      <p class="v">Verified: <b>9 perturbation checks</b>. Two findings. <strong>The memory was dead:</strong>
+        "changing the past must move a later frame" failed with delta exactly 0 — the FIFO started empty at the
+        first supervised frame, so the robot's own history was never read. Fixed by rolling the FIFO over the whole
+        stream as warm-up. <strong>The memory attention did 25× redundant work</strong> — it pushed all 25 slots
+        through the block but only ever reads the last one; everything after the attention is position-wise.
+        Computing one query is bit-identical and far cheaper.</p>
+    </div></li>
+    <li><span class="n">3</span><div>
+      <h3>Readout</h3>
+      <p>k learned queries cross-attend over the robot points with padding masked; k=1 in every run so far.</p>
+      <p class="v">Verified: <b>8 checks</b>, including NaNs planted in padded slots. Found NaN gradients in the
+        time embedding when every scene key was masked during front-padding; the memory now runs only on live rows.</p>
+    </div></li>
+    <li><span class="n">4</span><div>
+      <h3>Head</h3>
+      <p>Three linear projections: body-frame translation in metres, raw 6D rotation, gripper logit. Initialised
+        near zero motion and identity rotation, so the policy starts at "stay still" rather than at noise.</p>
+      <p class="v">Verified: <b>10 checks</b> — a known +90° rotation to catch a transposed convention, 128 random
+        rotations round-tripping at 1e−12, proper rotations from degenerate inputs, finite-difference gradients.</p>
+    </div></li>
+    <li><span class="n">5</span><div>
+      <h3>Loss</h3>
+      <p>Weighted behaviour cloning, with the group scales measured on training data only. Section below.</p>
+      <p class="v">Verified: <b>10 checks</b>, including that touching a validation label makes the scale job fail.</p>
+    </div></li>
+    <li><span class="n">6</span><div>
+      <h3>Training loop and the overfit gate</h3>
+      <p>Before any real run: can the model memorise 10 hand-picked windows (480 targets, 14 gripper changes)?
+        It passed at update 150 and stopped automatically — loss 2.267&nbsp;→&nbsp;0.019, position
+        11.3&nbsp;→&nbsp;1.03&nbsp;mm, rotation 1.67°&nbsp;→&nbsp;0.20°, all 14 gripper transitions correct.
+        So the wiring carries gradient end to end.</p>
+      <p class="v">Verified: <b>6 checks</b>, plus a CPU smoke run that exposed the learning-rate problem below.</p>
+    </div></li>
+    <li><span class="n">7</span><div>
+      <h3>Held-out evaluator, with the gates fixed in advance</h3>
+      <p>Frozen validation windows, the copy-last baseline, gripper-event matching with penalties for missed and
+        extra events, per-lab breakdowns, and the memory interventions. The pass marks were written to
+        <code>validation_plan_v1.json</code> <em>before</em> the first run was submitted, so no threshold could be
+        moved afterwards.</p>
+      <p class="v">Verified: <b>4 checks</b> plus offline end-effector integration against saved FK
+        (maximum disagreement 0.00002&nbsp;px).</p>
+    </div></li>
+  </ol>
+</section>
+
+<section>
+  <h2>The loss, and why this one</h2>
+  <div class="prose"><p>The policy imitates the demonstrator: at every frame it predicts the next action the
+    operator took. One term per group, each divided by that group's own scale, all three coefficients 1.</p></div>
+
+  <div class="formula">position = ‖Δp̂ − Δp‖²  /  s_p²              s_p = 0.016682 m   (RMS displacement)
+rotation = ½‖R̂ − R‖_F²  /  s_r²            s_r = 0.045676     (≈ 2.617°)
+gripper  = BCEWithLogits(logit, open_next)
+
+loss = Σ(weight · valid · per-frame) / Σ(weight · valid)</div>
+
+  <div class="why">
+    <div>
+      <p class="q">Why scale the two continuous groups at all?</p>
+      <p>Metres and rotation matrices are different units; without scaling the mix of the three terms is arbitrary.
+        The scales are the RMS of the labels themselves, measured over the <strong>training split only</strong>
+        (12,123 clips, 9,441 episodes, 1,924,243 valid frames). This puts the do-nothing baseline — zero translation,
+        identity rotation — at a loss of exactly 1 per component, so the number says immediately whether the model beats
+        standing still.</p>
+    </div>
+    <div>
+      <p class="q">Why squared error and not Huber?</p>
+      <p>Huber protects against outliers in the <em>labels</em>. These labels are exact: recorded end-effector poses,
+        not estimates. There is nothing to protect against, and at δ=1 Huber would put 43% of frames into its linear
+        region — exactly the small, precise motions that the model is worst at, down-weighted.</p>
+    </div>
+    <div>
+      <p class="q">Why one scale per group and not per dimension?</p>
+      <p>Standardising each of the six rotation coordinates separately would divide by their individual standard
+        deviations. Two of the six barely vary in this data, so they would be multiplied by ~731× — the loss would be
+        dominated by the rotation the robot never performs.</p>
+    </div>
+    <div>
+      <p class="q">Why the clip weight?</p>
+      <p>Tracking quality varies. Rather than deleting the noisier clips, each clip carries a weight from its measured
+        tracking error, so a poorly tracked video counts for less but still contributes. Frames with invalid labels are
+        removed before any arithmetic, so they cannot leak in as NaNs.</p>
+    </div>
+    <div>
+      <p class="q">One thing the loss alone did not fix.</p>
+      <p>With a single learning rate, the first update pushed position error from 0.84&nbsp;cm to 9.6&nbsp;cm. Adam
+        normalises by gradient statistics and so ignores the physical units of each output. Multiplying the position
+        and rotation projection rates by their own loss scales fixed it; the rest of the network keeps the base rate.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Proprioception: when, and why</h2>
+  <div class="prose">
+    <p><strong>When.</strong> 11 September, immediately after the first one-epoch pilot failed all three gates.</p>
+    <p><strong>Why.</strong> The failure was specific, not general. Position error was 9.99&nbsp;mm against a
+      4.55&nbsp;mm copy-last baseline, but the gripper behaviour was the striking part: 1,889 spurious open/close
+      events and a timing cost of 5.77 frames. The policy could see the robot only through tracked pixels — it had no
+      access to its own joint state, and nothing at all tells it how wide the gripper currently is when the fingers are
+      occluded. Adding the robot's own sensors is the cheapest possible test of "is an input missing?", and it is what a
+      real controller would have anyway.</p>
+    <p><strong>What was added.</strong> Joint positions q (7), joint velocities q̇ (7) and current gripper width (1),
+      each on a fixed scale, through a small encoder added to the action token just before the head — late fusion,
+      69,888 parameters, final projection zero-initialised so the model starts identical to the visual one.</p>
+    <p><strong>The leak test.</strong> The obvious danger is handing the model the answer. A dedicated check confirms
+      only frame t's state is read, never t+1, and that no target field reaches the encoder — plus five more checks on
+      alignment, padding, identical initialisation and checkpoint restoration. All 6 passed, along with the 6 existing
+      training checks and an end-to-end smoke run.</p>
+    <p><strong>What it changed.</strong> At equal budget it cut position error by 2.3&nbsp;mm and all but removed the
+      spurious gripper events — 1,889 down to 136 — bringing the transition-timing gate from failing to passing.
+      It also <em>halved</em> the scene-shuffle effect, which is the uncomfortable part: see the tests below.</p>
+  </div>
+</section>
+
+<section>
+  <h2>Training runs</h2>
+  <div class="prose"><p>Five GPU runs in total: one overfit check and four real trainings. Every number below is
+    on the same 63,598 held-out targets from 1,326 windows, in episodes never seen in training.</p></div>
+
+  <div class="tablewrap">
+    <table>
+      <caption class="caption" style="padding:10px 14px 0;text-align:left">All four trainings, best checkpoint by validation loss</caption>
+      <thead><tr>
+        <th>Run</th><th>Inputs</th><th class="n">Epochs</th><th class="n">Val loss</th>
+        <th class="n">Position</th><th class="n">Rotation</th><th class="n">Gripper F1</th>
+        <th class="n">Transition cost</th><th class="n">Scene effect</th>
+      </tr></thead>
+      <tbody>
+        <tr><td>Pilot · 1657753</td><td>visual</td><td class="n">1</td><td class="n">1.739</td>
+          <td class="n">9.99 mm</td><td class="n">1.86°</td><td class="n">0.41</td><td class="n">5.77 fr</td><td class="n">+4.1%</td></tr>
+        <tr><td>Proprio pilot · 1658371</td><td>visual + proprio</td><td class="n">1</td><td class="n">0.888</td>
+          <td class="n">7.65 mm</td><td class="n">1.26°</td><td class="n">0.93</td><td class="n">1.32 fr</td><td class="n">+2.1%</td></tr>
+        <tr><td>Five epochs · 1658338</td><td>visual</td><td class="n">5</td><td class="n">1.247</td>
+          <td class="n">8.49 mm</td><td class="n">1.64°</td><td class="n">0.60</td><td class="n">3.64 fr</td><td class="n">+8.7%</td></tr>
+        <tr class="hl"><td>Five epochs + proprio · 1658584</td><td>visual + proprio</td><td class="n">5</td><td class="n">0.610</td>
+          <td class="n">6.49 mm</td><td class="n">1.05°</td><td class="n">0.96</td><td class="n">0.77 fr</td><td class="n">+4.2%</td></tr>
+        <tr><td class="muted">Copy the previous action</td><td class="muted">no model</td><td class="n muted">—</td><td class="n muted">—</td>
+          <td class="n muted">4.55 mm</td><td class="n muted">0.79°</td><td class="n muted">0.99</td><td class="n muted">1.06 fr</td><td class="n muted">—</td></tr>
+        <tr><td class="muted">Gate, fixed in advance</td><td class="muted">—</td><td class="n muted">—</td><td class="n muted">—</td>
+          <td class="n"><span class="chip fail">&lt; 4.35 mm</span></td><td class="n muted">—</td><td class="n muted">—</td>
+          <td class="n"><span class="chip pass">&lt; 1.06 fr</span></td><td class="n"><span class="chip fail">&gt; 10%</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="caption">"Transition cost" is how many frames late or early the policy opens or closes the gripper, with
+    penalties for events it invents or misses. The five-epoch proprioception run is the first to pass a gate: its
+    gripper timing (0.77 frames) is better than copying the previous action (1.06). Position and scene use still fail.</p>
+
+  <figure>
+    <div class="legend">
+      <span><i style="background:var(--amber)"></i>visual only</span>
+      <span><i style="background:var(--teal)"></i>with proprioception</span>
+      <span><i style="background:var(--slate)"></i>copy the previous action</span>
+    </div>
+    <div class="chart">
+      <svg viewBox="0 0 760 250" role="img" aria-labelledby="c1t">
+        <title id="c1t">Position error against training epoch: the visual run falls from 13.8 to 8.5 millimetres and the proprioception run to 6.5, both staying above the 4.55 millimetre copy-last baseline</title>
+        <line class="grid" x1="60" y1="183.4" x2="560" y2="183.4"/>
+        <line class="grid" x1="60" y1="156.3" x2="560" y2="156.3"/>
+        <line class="grid" x1="60" y1="129.1" x2="560" y2="129.1"/>
+        <line class="grid" x1="60" y1="102.0" x2="560" y2="102.0"/>
+        <line class="grid" x1="60" y1="74.9" x2="560" y2="74.9"/>
+        <line class="grid" x1="60" y1="47.7" x2="560" y2="47.7"/>
+        <line class="grid" x1="60" y1="20.6" x2="560" y2="20.6"/>
+        <line class="ax" x1="60" y1="210.5" x2="560" y2="210.5"/>
+        <text class="tk" x="52" y="214" text-anchor="end">0</text>
+        <text class="tk" x="52" y="187" text-anchor="end">2</text>
+        <text class="tk" x="52" y="160" text-anchor="end">4</text>
+        <text class="tk" x="52" y="133" text-anchor="end">6</text>
+        <text class="tk" x="52" y="106" text-anchor="end">8</text>
+        <text class="tk" x="52" y="79" text-anchor="end">10</text>
+        <text class="tk" x="52" y="51" text-anchor="end">12</text>
+        <text class="tk" x="52" y="24" text-anchor="end">14</text>
+        <text class="tk" x="60" y="18">mm</text>
+
+        <line class="ref" x1="60" y1="148.7" x2="560" y2="148.7"/>
+        <text class="lb muted" x="568" y="152">copy-last 4.55</text>
+
+        <polyline class="ln-amber" points="60,23.0 160,71.6 260,75.8 360,84.4 460,92.4 560,95.0"/>
+        <polyline class="ln-teal" points="60,23.0 160,109.4 260,109.4 360,116.3 460,120.8 560,122.4"/>
+        <circle class="pt-amber" cx="60" cy="23.0" r="4"><title>Untrained: 13.79 mm</title></circle>
+        <circle class="pt-amber" cx="160" cy="71.6" r="4"><title>Visual, epoch 1: 10.21 mm</title></circle>
+        <circle class="pt-amber" cx="260" cy="75.8" r="4"><title>Visual, epoch 2: 9.90 mm</title></circle>
+        <circle class="pt-amber" cx="360" cy="84.4" r="4"><title>Visual, epoch 3: 9.27 mm</title></circle>
+        <circle class="pt-amber" cx="460" cy="92.4" r="4"><title>Visual, epoch 4: 8.68 mm</title></circle>
+        <circle class="pt-amber" cx="560" cy="95.0" r="4"><title>Visual, epoch 5: 8.49 mm</title></circle>
+        <circle class="pt-teal" cx="160" cy="109.4" r="4"><title>Proprioception, epoch 1: 7.45 mm</title></circle>
+        <circle class="pt-teal" cx="260" cy="109.4" r="4"><title>Proprioception, epoch 2: 7.45 mm</title></circle>
+        <circle class="pt-teal" cx="360" cy="116.3" r="4"><title>Proprioception, epoch 3: 6.94 mm</title></circle>
+        <circle class="pt-teal" cx="460" cy="120.8" r="4"><title>Proprioception, epoch 4: 6.61 mm</title></circle>
+        <circle class="pt-teal" cx="560" cy="122.4" r="4"><title>Proprioception, epoch 5: 6.49 mm</title></circle>
+        <text class="lb amber" x="568" y="99">8.49</text>
+        <text class="lb teal" x="568" y="126">6.49</text>
+
+        <text class="tk" x="60" y="230" text-anchor="middle">start</text>
+        <text class="tk" x="160" y="230" text-anchor="middle">1</text>
+        <text class="tk" x="260" y="230" text-anchor="middle">2</text>
+        <text class="tk" x="360" y="230" text-anchor="middle">3</text>
+        <text class="tk" x="460" y="230" text-anchor="middle">4</text>
+        <text class="tk" x="560" y="230" text-anchor="middle">5</text>
+        <text class="tk" x="310" y="246" text-anchor="middle">epoch</text>
+      </svg>
+    </div>
+    <figcaption class="caption">Both curves flatten well above the baseline. The one-epoch runs used a schedule that
+      decayed to zero within their single epoch, so they are not the first point of these curves.</figcaption>
+  </figure>
+</section>
+
+<section>
+  <h2>The tests</h2>
+  <div class="prose">
+    <p>Low error on its own would not tell us the model is using the scene memory — the point of the whole design.
+      So each finished run is also probed by intervention: replace one input with another episode's, keep everything
+      else fixed, and measure how much worse the predictions get. A memory that matters is expensive to corrupt.</p>
+  </div>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Intervention</th><th>What it tests</th><th class="n">Pilot</th><th class="n">Proprio 1ep</th><th class="n">Visual 5ep</th><th class="n">Proprio 5ep</th></tr></thead>
+      <tbody>
+        <tr><td>Scene shuffle</td><td>does the object memory matter?</td><td class="n">+4.1%</td><td class="n">+2.1%</td><td class="n">+8.7%</td><td class="n">+4.2%</td></tr>
+        <tr><td>Robot-history shuffle</td><td>does its own past matter?</td><td class="n">+123%</td><td class="n">+108%</td><td class="n">+239%</td><td class="n">+140%</td></tr>
+        <tr><td>Proprioception shuffle</td><td>does the joint state matter?</td><td class="n muted">—</td><td class="n">+89%</td><td class="n muted">—</td><td class="n">+135%</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="caption">Donor episodes are fixed in the frozen plan, so the shuffle is reproducible rather than random.
+    Scene and proprioception rows are measured on all 63,598 targets; the robot-history row uses the smaller paired
+    subset the protocol reserves for it (~1,300 windows), against its own clean baseline. The pattern is consistent
+    across every run: the policy leans hard on its own motion history and barely on the scene.</p>
+
+  <figure>
+    <div class="chart">
+      <svg viewBox="0 0 680 250" role="img" aria-labelledby="c2t">
+        <title id="c2t">Scene-shuffle effect by run: 4.1, 2.1, 8.7 and 4.2 percent, all far below the 10 percent gate</title>
+        <line class="grid" x1="60" y1="185.5" x2="650" y2="185.5"/>
+        <line class="grid" x1="60" y1="156.0" x2="650" y2="156.0"/>
+        <line class="grid" x1="60" y1="126.5" x2="650" y2="126.5"/>
+        <line class="grid" x1="60" y1="97.0" x2="650" y2="97.0"/>
+        <line class="grid" x1="60" y1="67.5" x2="650" y2="67.5"/>
+        <line class="ax" x1="60" y1="215" x2="650" y2="215"/>
+        <text class="tk" x="52" y="219" text-anchor="end">0%</text>
+        <text class="tk" x="52" y="189" text-anchor="end">2%</text>
+        <text class="tk" x="52" y="160" text-anchor="end">4%</text>
+        <text class="tk" x="52" y="130" text-anchor="end">6%</text>
+        <text class="tk" x="52" y="101" text-anchor="end">8%</text>
+        <text class="tk" x="52" y="71" text-anchor="end">10%</text>
+
+        <rect class="bar-amber" x="86" y="154.0" width="94" height="61" rx="4"><title>Visual, one epoch: +4.1%</title></rect>
+        <rect class="bar-teal" x="230" y="183.4" width="94" height="31.6" rx="4"><title>Proprioception, one epoch: +2.1%</title></rect>
+        <rect class="bar-amber" x="374" y="86.0" width="94" height="129" rx="4"><title>Visual, five epochs: +8.7%</title></rect>
+        <rect class="bar-teal" x="518" y="153.5" width="94" height="61.5" rx="4"><title>Proprioception, five epochs: +4.2%</title></rect>
+        <text class="inbar" x="133" y="174" text-anchor="middle">+4.1%</text>
+        <text class="inbar" x="277" y="203" text-anchor="middle">+2.1%</text>
+        <text class="inbar" x="421" y="106" text-anchor="middle">+8.7%</text>
+        <text class="inbar" x="565" y="174" text-anchor="middle">+4.2%</text>
+
+        <line class="gate" x1="60" y1="67.5" x2="650" y2="67.5"/>
+        <text class="lb" x="646" y="60" text-anchor="end" style="fill:var(--fail)">gate: the scene must matter by more than 10%</text>
+
+        <text class="tk" x="133" y="233" text-anchor="middle">visual</text>
+        <text class="tk" x="133" y="246" text-anchor="middle">1 epoch</text>
+        <text class="tk" x="277" y="233" text-anchor="middle">proprio</text>
+        <text class="tk" x="277" y="246" text-anchor="middle">1 epoch</text>
+        <text class="tk" x="421" y="233" text-anchor="middle">visual</text>
+        <text class="tk" x="421" y="246" text-anchor="middle">5 epochs</text>
+        <text class="tk" x="565" y="233" text-anchor="middle">proprio</text>
+        <text class="tk" x="565" y="246" text-anchor="middle">5 epochs</text>
+      </svg>
+    </div>
+    <figcaption class="caption">Training longer roughly doubles scene use; adding proprioception roughly halves it.
+      No configuration comes close to the gate.</figcaption>
+  </figure>
+
+  <div class="prose" style="margin-top:1.4rem">
+    <h3>Splitting the scene test by difficulty</h3>
+    <p>A 2–9% effect could be an average hiding something real: most frames are mid-motion, where "keep going" is
+      right and no scene could help. If the model used the scene exactly where the motion changes, the effect would be
+      concentrated there. So frames were binned into five equal groups by how badly copying the previous action does on
+      them, and the same shuffle re-run per bin, with confidence intervals from a bootstrap over whole windows.</p>
+    <p>Each run reproduced its own overall number exactly before being split — and then the effect came out
+      <strong>flat</strong>. For the five-epoch visual model: +9.1% on the easiest frames, +8.4% on the hardest, and
+      +7.5% within ±2 frames of a gripper change — if anything <em>lower</em> where the scene should matter most. The
+      proprioception run is equally flat at about 2%. Longer training raises scene use everywhere without teaching the
+      model when the scene matters.</p>
+    <p class="muted">One caveat worth stating: points on a grasped object move with the gripper, so shuffling the
+      scene also removes a second copy of the robot's own motion. Part of that 8.7% may be motion information, not
+      object locations. Splitting on whether the gripper is closed would separate the two.</p>
+  </div>
+</section>
+
+<section>
+  <h2>What the numbers say</h2>
+  <div class="prose">
+    <p>Two separate problems, and they need different fixes.</p>
+    <p><strong>1 · The motion is imprecise.</strong> At 6.49&nbsp;mm the policy is still 1.4× worse than simply
+      repeating the previous action. Predicting one step ahead at 7.2&nbsp;Hz is dominated by momentum, so a model that
+      regresses the absolute action spends its capacity re-deriving a quantity it is already given. Predicting the
+      <em>residual</em> — how the action differs from the last one — targets exactly the part that is not momentum.</p>
+    <p><strong>2 · The scene is under-used, uniformly.</strong> Neither more training nor better inputs moved scene use
+      where it should matter. One-step prediction simply does not require it: you can be right for 0.14&nbsp;s without
+      knowing where anything is. Predicting a chunk of ~16 future actions at once (as ACT does) makes the objective
+      require the scene, because you cannot extrapolate two seconds of motion from momentum alone.</p>
+    <p>Training is not the bottleneck: train and validation errors stay within 0.2&nbsp;mm of each other in every run,
+      so the model is underfitting, not memorising. There are 32,031 further unused episodes available, but more data
+      does not help a model that is not yet fitting what it has.</p>
+  </div>
+
+  <ol class="decisions">
+    <li><span class="k">A</span><div>
+      <p class="q">Residual target, action chunking, or both?</p>
+      <p>Residual targets are a one-line change to the labels and directly attack problem 1. Chunking is a larger change
+        — new targets, a k&gt;1 readout — and attacks problem 2. They are compatible.</p>
+    </div></li>
+    <li><span class="k">B</span><div>
+      <p class="q">If we chunk, does the loss shape change?</p>
+      <p>Averaging over a chunk with a squared error re-introduces averaging over possible futures. A per-step
+        weighting, or a distributional head, is the alternative.</p>
+    </div></li>
+    <li><span class="k">C</span><div>
+      <p class="q">Should the gripper target be the observed state or the operator's command?</p>
+      <p>Today it is the next observed width. DROID also records the command itself, which leads the observed state by
+        a few frames. The command is what a controller would actually output.</p>
+    </div></li>
+  </ol>
+</section>
+
+<footer>
+  All results on 63,598 held-out targets (1,326 windows, episodes disjoint from training). Predictions are one step
+  ahead conditioned on recorded observations — not closed-loop task success. Build log: <code>DECODER_LOG.md</code>;
+  protocol: <code>validation_plan_v1.json</code>; runs under <code>out/policy_*</code>.
+</footer>
+
+</div>

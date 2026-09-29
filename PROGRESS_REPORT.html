@@ -1,0 +1,422 @@
+<title>Point-Memory Action Decoder</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@600;700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap">
+<style>
+:root{
+  --paper:#F3F5F7; --surface:#FFFFFF; --ink:#17212C; --muted:#5D6A77; --rule:#D6DCE3;
+  --amber:#B8700F; --teal:#1C7268; --slate:#8593A1;
+  --fail:#A8412E; --fail-bg:#F6E3DF; --pass:#3A7447; --pass-bg:#E1EEE3;
+  --warn:#8A6410; --warn-bg:#F4ECD8; --tint:#E9EEF2;
+  --sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --cond:"IBM Plex Sans Condensed","Arial Narrow",system-ui,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --paper:#0E141A; --surface:#151E27; --ink:#E4EAF0; --muted:#8F9DAB; --rule:#26323E;
+    --amber:#E3A445; --teal:#45B4A6; --slate:#7C8B99;
+    --fail:#E88A74; --fail-bg:#3A211C; --pass:#7FC894; --pass-bg:#1B3024;
+    --warn:#E3B45A; --warn-bg:#342A15; --tint:#1B2631;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#0E141A; --surface:#151E27; --ink:#E4EAF0; --muted:#8F9DAB; --rule:#26323E;
+  --amber:#E3A445; --teal:#45B4A6; --slate:#7C8B99;
+  --fail:#E88A74; --fail-bg:#3A211C; --pass:#7FC894; --pass-bg:#1B3024;
+  --warn:#E3B45A; --warn-bg:#342A15; --tint:#1B2631;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);
+  font-size:16px;line-height:1.6;padding:0 20px;-webkit-font-smoothing:antialiased}
+.page{max-width:62rem;margin:0 auto;padding-block:48px 72px}
+.prose{max-width:41rem}
+h1,h2,h3{font-family:var(--cond);text-wrap:balance;margin:0;line-height:1.15}
+h1{font-size:2.6rem;font-weight:700;letter-spacing:-.01em}
+h2{font-size:1.55rem;font-weight:700;margin-bottom:.6rem}
+h3{font-size:1.15rem;font-weight:600}
+p{margin:0}
+.prose > * + *{margin-top:.85rem}
+.eyebrow{font-family:var(--mono);font-size:.74rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.lede{font-size:1.12rem;color:var(--ink);margin-top:.9rem;max-width:41rem}
+.num,td.n,th.n{font-family:var(--mono);font-variant-numeric:tabular-nums}
+em{font-style:italic}
+code{font-family:var(--mono);font-size:.86em;background:var(--tint);padding:.08em .35em;border-radius:3px}
+section{margin-top:3.2rem}
+section > h2 + .prose{margin-top:.2rem}
+
+/* status strip */
+.status{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--rule);
+  border:1px solid var(--rule);border-radius:6px;overflow:hidden;margin-top:2rem}
+.status > div{background:var(--surface);padding:14px 16px;display:flex;flex-direction:column;gap:6px}
+.status .k{font-family:var(--mono);font-size:.72rem;letter-spacing:.07em;text-transform:uppercase}
+.status .k.pass{color:var(--pass)} .status .k.fail{color:var(--fail)} .status .k.warn{color:var(--warn)}
+.status p{font-size:.92rem;color:var(--ink)}
+
+/* findings */
+.findings{list-style:none;padding:0;margin:1rem 0 0;display:grid;gap:14px;max-width:44rem}
+.findings li{display:grid;grid-template-columns:1.6rem 1fr;gap:10px;align-items:start}
+.findings .dot{width:10px;height:10px;border-radius:50%;margin-top:.5rem;justify-self:center}
+.dot.pass{background:var(--pass)} .dot.fail{background:var(--fail)} .dot.warn{background:var(--amber)}
+.findings strong{font-weight:600}
+
+/* tables */
+.tablewrap{overflow-x:auto;margin-top:1.1rem;border:1px solid var(--rule);border-radius:6px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:.92rem}
+th,td{text-align:left;padding:9px 14px;border-bottom:1px solid var(--rule);vertical-align:top}
+tr:last-child td{border-bottom:0}
+th{font-family:var(--mono);font-weight:500;font-size:.74rem;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);background:var(--tint)}
+td.n,th.n{text-align:right;white-space:nowrap}
+tr.hl td{background:var(--tint)}
+.chip{display:inline-block;font-family:var(--mono);font-size:.72rem;font-weight:500;letter-spacing:.04em;
+  padding:2px 8px;border-radius:999px;white-space:nowrap}
+.chip.pass{color:var(--pass);background:var(--pass-bg)}
+.chip.fail{color:var(--fail);background:var(--fail-bg)}
+.chip.warn{color:var(--warn);background:var(--warn-bg)}
+.chip.run{color:var(--teal);background:var(--tint)}
+.muted{color:var(--muted)}
+.caption{font-size:.84rem;color:var(--muted);margin-top:.6rem;max-width:44rem}
+
+/* pipeline */
+.pipe{display:flex;flex-wrap:wrap;align-items:stretch;gap:8px;margin-top:1.2rem}
+.stage{flex:1 1 140px;border:1px solid var(--rule);border-radius:6px;padding:10px 12px;background:var(--surface);
+  display:flex;flex-direction:column;gap:4px;min-width:0}
+.stage .t{font-family:var(--cond);font-weight:600;font-size:1rem}
+.stage .d{font-size:.82rem;color:var(--muted);line-height:1.4}
+.stage .tag{font-family:var(--mono);font-size:.66rem;letter-spacing:.06em;text-transform:uppercase}
+.stage.frozen .tag{color:var(--slate)}
+.stage.trained{border-color:var(--teal)}
+.stage.trained .tag{color:var(--teal)}
+.stage.gt .tag{color:var(--amber)}
+.arrow{align-self:center;color:var(--muted);font-family:var(--mono)}
+
+/* experiments */
+.exp{display:grid;grid-template-columns:11rem 1fr;gap:10px 28px;padding-block:22px;border-top:1px solid var(--rule)}
+.exp:first-of-type{border-top:0}
+.exp .side{display:flex;flex-direction:column;gap:6px}
+.exp .side .i{font-family:var(--mono);font-size:.8rem;color:var(--muted)}
+.exp .body > * + *{margin-top:.7rem}
+.exp .q{font-family:var(--cond);font-weight:600;font-size:1.18rem}
+.exp .body p{max-width:41rem}
+
+/* charts */
+figure{margin:1.2rem 0 0}
+.chart{background:var(--surface);border:1px solid var(--rule);border-radius:6px;padding:14px 10px 6px}
+.chart svg{width:100%;height:auto;display:block}
+.ax{stroke:var(--rule);stroke-width:1}
+.grid{stroke:var(--rule);stroke-width:1;stroke-dasharray:2 4}
+.tk{fill:var(--muted);font-family:var(--mono);font-size:11px}
+.lb{font-family:var(--mono);font-size:11.5px}
+.lb.teal{fill:var(--teal)} .lb.slate{fill:var(--slate)} .lb.amber{fill:var(--amber)} .lb.muted{fill:var(--muted)}
+.ln-teal{stroke:var(--teal);stroke-width:2.4;fill:none}
+.ln-slate{stroke:var(--slate);stroke-width:2.4;fill:none}
+.pt-teal{fill:var(--teal)} .pt-slate{fill:var(--slate)}
+.gate{stroke:var(--fail);stroke-width:1.4;stroke-dasharray:6 4}
+.guide{stroke:var(--teal);stroke-width:1;stroke-dasharray:3 4;opacity:.55}
+.w-teal{stroke:var(--teal);stroke-width:1.4} .w-slate{stroke:var(--slate);stroke-width:1.4}
+.legend{display:flex;flex-wrap:wrap;gap:14px;font-family:var(--mono);font-size:.78rem;color:var(--muted);margin:2px 6px 8px}
+.legend i{display:inline-block;width:14px;height:3px;border-radius:2px;margin-right:6px;vertical-align:middle}
+
+/* two problems */
+.two{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:1.1rem}
+.two > div{border:1px solid var(--rule);border-radius:6px;background:var(--surface);padding:16px 18px;display:flex;flex-direction:column;gap:8px}
+.two .k{font-family:var(--mono);font-size:.72rem;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+.two .big{font-family:var(--mono);font-size:1.5rem;font-weight:500;font-variant-numeric:tabular-nums}
+.two p{font-size:.92rem}
+
+/* decisions */
+.decisions{list-style:none;padding:0;margin:1rem 0 0;display:grid;gap:0;border:1px solid var(--rule);border-radius:6px;background:var(--surface);overflow:hidden}
+.decisions li{display:grid;grid-template-columns:2.4rem 1fr;gap:4px 14px;padding:16px 18px;border-bottom:1px solid var(--rule)}
+.decisions li:last-child{border-bottom:0}
+.decisions .l{font-family:var(--cond);font-weight:700;font-size:1.25rem;color:var(--amber);line-height:1.2}
+.decisions h3{font-size:1.08rem;margin-bottom:.35rem}
+.decisions p{font-size:.93rem;max-width:44rem}
+.decisions p + p{margin-top:.5rem}
+.rec{font-size:.9rem;color:var(--teal);font-weight:500}
+
+footer{margin-top:3.6rem;padding-top:1.2rem;border-top:1px solid var(--rule);font-size:.84rem;color:var(--muted)}
+footer code{background:transparent;padding:0}
+a{color:var(--teal)}
+:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
+
+@media (max-width:720px){
+  h1{font-size:2rem}
+  .status{grid-template-columns:1fr}
+  .exp{grid-template-columns:1fr;gap:6px}
+  .two{grid-template-columns:1fr}
+  .arrow{transform:rotate(90deg);width:100%;text-align:center}
+  .stage{flex-basis:100%}
+}
+</style>
+
+<div class="page">
+
+<header>
+  <div class="eyebrow">Progress report · KUIS AI · 11 September 2026</div>
+  <h1>Point-Memory Action Decoder</h1>
+  <p class="lede">Since the go-ahead: the decoder is built and verified, six experiments have run on the full DROID set, and the results point to two separate problems — one of which needs a decision on the training objective.</p>
+
+  <div class="status" role="list">
+    <div role="listitem"><span class="k pass">Built &amp; verified</span><p>Dataset, dataloader, replica block, readout, head, loss. Memorises 10 windows perfectly.</p></div>
+    <div role="listitem"><span class="k warn">Measured</span><p>Proprioception halves the loss. Longer training doubles scene use, but not past the gate.</p></div>
+    <div role="listitem"><span class="k fail">Needs your call</span><p>How to make the objective reward looking at the scene — residual target or action chunking.</p></div>
+  </div>
+</header>
+
+<section>
+  <h2>Where things stand</h2>
+  <ul class="findings">
+    <li><span class="dot pass"></span><p><strong>The decoder learns.</strong> It fits 10 training windows to 1.03 mm and gets every gripper change right, so gradients reach through the full 71-frame recurrent rollout.</p></li>
+    <li><span class="dot pass"></span><p><strong>Proprioception is the biggest single gain.</strong> Adding the robot's own joint state halves validation loss and cuts spurious gripper changes from 1,889 to 136.</p></li>
+    <li><span class="dot fail"></span><p><strong>The model barely uses the scene.</strong> With proprioception, shuffling the object memory costs about 2% on every frame — including the hardest ones. Five epochs raised the visual model's scene effect to 8.7% — but uniformly, not at the frames where motion changes, and still short of the 10% gate.</p></li>
+    <li><span class="dot warn"></span><p><strong>It is still worse than repeating the last action</strong> — 7.65 mm against 4.55 mm. Part of that is training length; part is the objective.</p></li>
+  </ul>
+</section>
+
+<section>
+  <h2>The data</h2>
+  <div class="prose">
+    <p>Every clip has exact ground truth for the robot: forward kinematics from DROID's own joint encoders, projected through PointWorld's fitted camera calibration. Object points have no ground truth — their tracks are Track-On's estimate.</p>
+  </div>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Stage</th><th class="n">Clips</th><th>Reason for loss</th></tr></thead>
+      <tbody>
+        <tr><td>MolmoMotion × PointWorld overlap</td><td class="n">14,083</td><td class="muted">—</td></tr>
+        <tr><td>Frame-0 object seed exists</td><td class="n">13,705</td><td class="muted">object not visible at frame 0</td></tr>
+        <tr><td>Survived all five generation stages</td><td class="n">13,651</td><td class="muted">grounding, FK coverage, SAM filter</td></tr>
+        <tr class="hl"><td>Kept after the 50 px tracking-quality cut</td><td class="n">13,449</td><td class="muted">194 clips where tracking failed outright</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="caption">Split by episode so no clip's second camera angle crosses train/val: 12,123 training clips (9,441 episodes) and 1,326 validation (1,048), about 1.9 M supervised frames at 7.2 Hz across 12 labs. Surviving clips are weighted by tracking quality rather than cut further, to keep every lab represented.</p>
+</section>
+
+<section>
+  <h2>How good is the tracker?</h2>
+  <div class="prose">
+    <p>Because the robot points have exact ground truth, frozen Track-On can be measured rather than eyeballed. This matters because its output <em>is</em> the scene memory — the policy's entire visual input.</p>
+  </div>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Measurement, 13,643 clips</th><th class="n">Result</th></tr></thead>
+      <tbody>
+        <tr><td>Median error against FK</td><td class="n">7.72 px</td></tr>
+        <tr><td>Point-frames within 10 px</td><td class="n">59.8%</td></tr>
+        <tr><td>Error 0–10 frames after a point is born → after 120</td><td class="n">0.74 → 10.30 px</td></tr>
+        <tr class="hl"><td><strong>Occlusion returns landing more than 20 px off</strong> (1.8 M events)</td><td class="n"><strong>32.5%</strong></td></tr>
+        <tr><td>… when hidden 3–5 frames / 50+ frames</td><td class="n">30.2% / 34.1%</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="caption"><strong>For your talk — "it leaves and comes back; will the tracker recognise it?":</strong> one in three times, no — and how long the point was hidden barely matters. The misidentification happens at the moment of loss, not through gradual forgetting.</p>
+</section>
+
+<section>
+  <h2>The decoder</h2>
+  <div class="prose">
+    <p>Your design: object points form a frozen scene memory; robot points feed a trainable replica of Track-On's block that keeps its own action memory and attends into the scene.</p>
+  </div>
+  <div class="pipe" aria-label="Decoder pipeline">
+    <div class="stage gt"><span class="tag">input</span><span class="t">DROID episode</span><span class="d">video at 7.2 Hz, joint encoders</span></div>
+    <span class="arrow" aria-hidden="true">→</span>
+    <div class="stage frozen"><span class="tag">frozen</span><span class="t">Track-On-R</span><span class="d">100 object points, up to 128 robot points</span></div>
+    <span class="arrow" aria-hidden="true">→</span>
+    <div class="stage trained"><span class="tag">trained</span><span class="t">Replica block ×3</span><span class="d">across points → own 24-frame memory → scene memory</span></div>
+    <span class="arrow" aria-hidden="true">→</span>
+    <div class="stage trained"><span class="tag">trained</span><span class="t">Readout + head</span><span class="d">Δ position · Δ rotation (6D) · gripper</span></div>
+  </div>
+  <p class="caption">7.9 M trained parameters. Track-On stays frozen, which is what lets its 234 GB token stream be cached once instead of re-running DINOv3 every batch. Verified before training by perturbation: scrambling any frame after <em>t</em> leaves the prediction at <em>t</em> bit-identical, and padded points change nothing.</p>
+</section>
+
+<section>
+  <h2>Experiments</h2>
+  <p class="caption" style="margin-top:0">In the order they ran. All numbers are on the same 63,598 held-out validation frames unless noted.</p>
+
+  <div class="exp">
+    <div class="side"><span class="i">1 · overfit</span><span class="chip pass">passed</span></div>
+    <div class="body">
+      <p class="q">Can it learn at all?</p>
+      <p>Ten fixed windows, five labs. Passed at step 150: position 11.31 → 1.03 mm, rotation 1.67° → 0.195°, gripper changes 3/14 → 14/14. On the way it briefly learned "keep the gripper as it is" — accuracy rose while transitions got worse — then learned when to switch.</p>
+    </div>
+  </div>
+
+  <div class="exp">
+    <div class="side"><span class="i">2 · one-epoch pilot</span><span class="chip fail">all gates failed</span></div>
+    <div class="body">
+      <p class="q">Does it generalise?</p>
+      <p>Not yet: 9.99 mm against 4.55 mm for simply repeating the previous action. Validation was still falling when the budget ran out — the best checkpoint was the last one.</p>
+    </div>
+  </div>
+
+  <div class="exp">
+    <div class="side"><span class="i">3 · train vs val</span><span class="chip warn">underfitting</span></div>
+    <div class="body">
+      <p class="q">Is it short of data?</p>
+      <p>No. Same checkpoint, dropout off: 10.03 mm on the training set, 9.99 mm on validation. It has not fitted what it already has, so more data would not help yet.</p>
+    </div>
+  </div>
+
+  <div class="exp">
+    <div class="side"><span class="i">4 · + proprioception</span><span class="chip pass">large gain</span></div>
+    <div class="body">
+      <p class="q">Is it missing an input?</p>
+      <p>Yes. The model only saw appearance tokens and had to infer its own motion from them. Feeding current joint positions, joint velocities and gripper width — one epoch, every other setting identical:</p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Validation, one epoch</th><th class="n">Visual only</th><th class="n">+ Proprioception</th><th>Gate</th></tr></thead>
+          <tbody>
+            <tr><td>Loss</td><td class="n">1.739</td><td class="n">0.888</td><td class="muted">—</td></tr>
+            <tr><td>Position</td><td class="n">9.99 mm</td><td class="n">7.65 mm</td><td><span class="chip fail">&lt; 4.35 mm</span></td></tr>
+            <tr><td>Rotation</td><td class="n">1.86°</td><td class="n">1.26°</td><td class="muted">—</td></tr>
+            <tr><td>Gripper transition cost</td><td class="n">5.77 fr</td><td class="n">1.32 fr</td><td><span class="chip fail">&lt; 1.06 fr</span></td></tr>
+            <tr><td>Gripper change F1 · extra changes</td><td class="n">0.41 · 1,889</td><td class="n">0.93 · 136</td><td class="muted">—</td></tr>
+            <tr class="hl"><td>Scene-shuffle effect</td><td class="n">+4.1%</td><td class="n">+2.1%</td><td><span class="chip fail">&gt; 10%</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Every lab improved. The extra encoder is 70 k parameters on a 7.9 M model, far too small to explain halving the loss — this is the input, not capacity. But note the last row: with a direct signal of its own motion, the model uses the scene <em>less</em>.</p>
+    </div>
+  </div>
+
+  <div class="exp">
+    <div class="side"><span class="i">5 · scene, by difficulty</span><span class="chip fail">scene barely used</span></div>
+    <div class="body">
+      <p class="q">Does it use the scene where it matters?</p>
+      <p>The hypothesis was that the 2% was diluted: most frames are mid-motion, where "keep going" is right and no scene can help. So I split frames by how badly repeating the previous action does on them, and re-ran the same shuffle — reproducing the reported +2.14% exactly first. The effect is flat — and after five epochs it is flat again, just higher.</p>
+      <figure>
+        <div class="chart">
+          <div class="legend"><span><i style="background:var(--slate)"></i>visual only, five epochs</span><span><i style="background:var(--teal)"></i>with proprioception, one epoch</span></div>
+          <svg viewBox="0 0 680 250" role="img" aria-labelledby="c2t">
+            <title id="c2t">Scene-shuffle effect by frame difficulty: flat near 2 percent with proprioception after one epoch, flat near 9 percent visual-only after five epochs, both below the 10 percent gate</title>
+            <line class="grid" x1="56" y1="166" x2="660" y2="166"/><line class="grid" x1="56" y1="136" x2="660" y2="136"/><line class="grid" x1="56" y1="106" x2="660" y2="106"/><line class="grid" x1="56" y1="76" x2="660" y2="76"/>
+            <line class="ax" x1="56" y1="196" x2="660" y2="196"/>
+            <text class="tk" x="48" y="200" text-anchor="end">0%</text><text class="tk" x="48" y="170" text-anchor="end">2%</text><text class="tk" x="48" y="140" text-anchor="end">4%</text><text class="tk" x="48" y="110" text-anchor="end">6%</text><text class="tk" x="48" y="80" text-anchor="end">8%</text><text class="tk" x="48" y="50" text-anchor="end">10%</text><text class="tk" x="48" y="20" text-anchor="end">12%</text>
+            <line class="gate" x1="56" y1="46" x2="660" y2="46"/>
+            <text class="lb" x="656" y="38" text-anchor="end" style="fill:var(--fail)">gate: scene must matter by &gt; 10%</text>
+            <line class="w-slate" x1="116.4" y1="89.5" x2="116.4" y2="32.5"/><line class="w-slate" x1="110.9" y1="89.5" x2="121.9" y2="89.5"/><line class="w-slate" x1="110.9" y1="32.5" x2="121.9" y2="32.5"/><circle class="pt-slate" cx="116.4" cy="59.5" r="4.5"/><text class="lb slate" x="128.0" y="63.5">+9.1%</text>
+            <line class="w-slate" x1="237.2" y1="70.0" x2="237.2" y2="38.5"/><line class="w-slate" x1="231.7" y1="70.0" x2="242.7" y2="70.0"/><line class="w-slate" x1="231.7" y1="38.5" x2="242.7" y2="38.5"/><circle class="pt-slate" cx="237.2" cy="55.0" r="4.5"/><text class="lb slate" x="248.79999999999998" y="59.0">+9.4%</text>
+            <line class="w-slate" x1="358.0" y1="77.5" x2="358.0" y2="49.0"/><line class="w-slate" x1="352.5" y1="77.5" x2="363.5" y2="77.5"/><line class="w-slate" x1="352.5" y1="49.0" x2="363.5" y2="49.0"/><circle class="pt-slate" cx="358.0" cy="64.0" r="4.5"/><text class="lb slate" x="369.6" y="68.0">+8.8%</text>
+            <line class="w-slate" x1="478.8" y1="80.5" x2="478.8" y2="52.0"/><line class="w-slate" x1="473.3" y1="80.5" x2="484.3" y2="80.5"/><line class="w-slate" x1="473.3" y1="52.0" x2="484.3" y2="52.0"/><circle class="pt-slate" cx="478.8" cy="67.0" r="4.5"/><text class="lb slate" x="490.40000000000003" y="71.0">+8.6%</text>
+            <line class="w-slate" x1="599.6" y1="83.5" x2="599.6" y2="58.0"/><line class="w-slate" x1="594.1" y1="83.5" x2="605.1" y2="83.5"/><line class="w-slate" x1="594.1" y1="58.0" x2="605.1" y2="58.0"/><circle class="pt-slate" cx="599.6" cy="70.0" r="4.5"/><text class="lb slate" x="611.2" y="74.0">+8.4%</text>
+            <line class="w-teal" x1="116.4" y1="182.5" x2="116.4" y2="152.5"/><line class="w-teal" x1="110.9" y1="182.5" x2="121.9" y2="182.5"/><line class="w-teal" x1="110.9" y1="152.5" x2="121.9" y2="152.5"/><circle class="pt-teal" cx="116.4" cy="167.5" r="4.5"/><text class="lb teal" x="128.0" y="171.5">+1.9%</text>
+            <line class="w-teal" x1="237.2" y1="166.0" x2="237.2" y2="149.5"/><line class="w-teal" x1="231.7" y1="166.0" x2="242.7" y2="166.0"/><line class="w-teal" x1="231.7" y1="149.5" x2="242.7" y2="149.5"/><circle class="pt-teal" cx="237.2" cy="157.0" r="4.5"/><text class="lb teal" x="248.79999999999998" y="161.0">+2.6%</text>
+            <line class="w-teal" x1="358.0" y1="167.5" x2="358.0" y2="155.5"/><line class="w-teal" x1="352.5" y1="167.5" x2="363.5" y2="167.5"/><line class="w-teal" x1="352.5" y1="155.5" x2="363.5" y2="155.5"/><circle class="pt-teal" cx="358.0" cy="161.5" r="4.5"/><text class="lb teal" x="369.6" y="165.5">+2.3%</text>
+            <line class="w-teal" x1="478.8" y1="167.5" x2="478.8" y2="157.0"/><line class="w-teal" x1="473.3" y1="167.5" x2="484.3" y2="167.5"/><line class="w-teal" x1="473.3" y1="157.0" x2="484.3" y2="157.0"/><circle class="pt-teal" cx="478.8" cy="161.5" r="4.5"/><text class="lb teal" x="490.40000000000003" y="165.5">+2.3%</text>
+            <line class="w-teal" x1="599.6" y1="173.5" x2="599.6" y2="161.5"/><line class="w-teal" x1="594.1" y1="173.5" x2="605.1" y2="173.5"/><line class="w-teal" x1="594.1" y1="161.5" x2="605.1" y2="161.5"/><circle class="pt-teal" cx="599.6" cy="167.5" r="4.5"/><text class="lb teal" x="611.2" y="171.5">+1.9%</text>
+            <text class="tk" x="116.4" y="216" text-anchor="middle">easiest</text><text class="tk" x="237.2" y="216" text-anchor="middle">2</text><text class="tk" x="358.0" y="216" text-anchor="middle">3</text><text class="tk" x="478.8" y="216" text-anchor="middle">4</text><text class="tk" x="599.6" y="216" text-anchor="middle">hardest</text>
+            <text class="tk" x="116.4" y="233" text-anchor="middle">copy-last 0.80 mm</text><text class="tk" x="237.2" y="233" text-anchor="middle">2.03 mm</text><text class="tk" x="358.0" y="233" text-anchor="middle">3.40 mm</text><text class="tk" x="478.8" y="233" text-anchor="middle">5.49 mm</text><text class="tk" x="599.6" y="233" text-anchor="middle">11.03 mm</text>
+          </svg>
+        </div>
+        <figcaption class="caption">Five equal bins of ~12,700 frames, ordered by the change in the demonstrator's action; both checkpoints reproduce their reported overall effect exactly (+2.14%, +8.74%) before being split. Whiskers are 95% intervals from a bootstrap over whole windows, since frames within a window are correlated. Within ±2 frames of a gripper change the effect is +2.9% and +7.5% — no higher than elsewhere.</figcaption>
+      </figure>
+      <p>The same split shows where the gap to copy-last lives: the model is <strong>4.3× worse on the easiest frames</strong> (3.47 vs 0.80 mm) and only 1.2× worse on the hardest. It has joint velocity and still cannot extrapolate steady motion precisely.</p>
+      <p><strong>A caution about the five-epoch number.</strong> Shuffling the scene costs 9% even on steady-motion frames, where object positions should be irrelevant. One plausible reason: points on a grasped object move with the gripper, so the scene carries a second motion signal. If so, a rising scene-shuffle effect is not the same as the policy using object locations to decide. Testable by splitting on whether the gripper is closed.</p>
+    </div>
+  </div>
+
+  <div class="exp">
+    <div class="side"><span class="i">6 · five epochs</span><span class="chip warn">helps, slowing</span></div>
+    <div class="body">
+      <p class="q">Does training longer close the gap?</p>
+      <p>Visual only, five epochs. It helps, with diminishing returns — 8.49 mm at the end, the last epoch gaining only 0.19 mm — and one epoch with proprioception (7.65 mm) is still better than five without. Two things did move: gripper transition cost fell from 5.77 to 3.64 frames, and <strong>the scene-shuffle effect rose from 4.1% to 8.7%</strong>. Split by difficulty (experiment 5's chart), that rise is uniform: longer training raised scene use everywhere without concentrating it where the motion changes.</p>
+      <figure>
+        <div class="chart">
+          <div class="legend"><span><i style="background:var(--slate)"></i>visual only (five epochs)</span><span><i style="background:var(--teal)"></i>with proprioception (one epoch)</span></div>
+          <svg viewBox="0 0 680 290" role="img" aria-labelledby="c1t">
+            <title id="c1t">Validation loss by training epoch: proprioception reaches 0.888 after one epoch, visual-only reaches 1.247 after five</title>
+            <line class="grid" x1="56" y1="219.6" x2="640" y2="219.6"/>
+            <line class="grid" x1="56" y1="168.7" x2="640" y2="168.7"/>
+            <line class="grid" x1="56" y1="117.8" x2="640" y2="117.8"/>
+            <line class="grid" x1="56" y1="66.9" x2="640" y2="66.9"/>
+            <line class="ax" x1="56" y1="240" x2="640" y2="240"/>
+            <text class="tk" x="48" y="223.6" text-anchor="end">1.0</text>
+            <text class="tk" x="48" y="172.7" text-anchor="end">1.5</text>
+            <text class="tk" x="48" y="121.8" text-anchor="end">2.0</text>
+            <text class="tk" x="48" y="70.9" text-anchor="end">2.5</text>
+            <text class="tk" x="48" y="20" text-anchor="end">3.0</text>
+            <text class="tk" x="56" y="258" text-anchor="middle">0</text>
+            <text class="tk" x="172.8" y="258" text-anchor="middle">1</text>
+            <text class="tk" x="289.6" y="258" text-anchor="middle">2</text>
+            <text class="tk" x="406.4" y="258" text-anchor="middle">3</text>
+            <text class="tk" x="523.2" y="258" text-anchor="middle">4</text>
+            <text class="tk" x="640" y="258" text-anchor="middle">5</text>
+            <text class="tk" x="348" y="280" text-anchor="middle">epoch (758 updates each)</text>
+            <text class="tk" x="14" y="130" text-anchor="middle" transform="rotate(-90 14 130)">validation loss</text>
+
+            <line class="guide" x1="172.8" y1="231" x2="640" y2="231"/>
+            <polyline class="ln-slate" points="56,31.7 172.8,141.9 289.6,161 406.4,177.7 523.2,190.4 640,194.5"/>
+            <circle class="pt-slate" cx="172.8" cy="141.9" r="3.5"/><circle class="pt-slate" cx="289.6" cy="161" r="3.5"/>
+            <circle class="pt-slate" cx="406.4" cy="177.7" r="3.5"/><circle class="pt-slate" cx="523.2" cy="190.4" r="3.5"/>
+            <circle class="pt-slate" cx="640" cy="194.5" r="4.5"/>
+            <text class="lb slate" x="636" y="182" text-anchor="end">1.247 after five epochs</text>
+
+            <polyline class="ln-teal" points="56,31.7 85.3,155.9 114.6,218 143.8,228.2 172.8,231"/>
+            <circle class="pt-teal" cx="172.8" cy="231" r="4.5"/>
+            <text class="lb teal" x="184" y="226">0.888 after one epoch</text>
+            <circle cx="56" cy="31.7" r="3.5" style="fill:var(--ink)"/>
+            <text class="lb muted" x="66" y="28">both start at 2.846 — identical initialisation</text>
+          </svg>
+        </div>
+        <figcaption class="caption">The one-epoch visual pilot ended at 1.739, matching this run at the same point (1.763). A train/validation gap has started to open (1.138 vs 1.247 at the end) while validation still improves. The run was interrupted at its final evaluation when the interactive session closed, and resumed from its epoch-4 checkpoint; the resumed steps reproduce the original losses to within bf16 noise.</figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Diagnosis: two separate problems</h2>
+  <div class="prose">
+    <p>Predicting 0.14 s ahead is mostly momentum. The objective rewards extrapolating the robot's own motion and gives little gradient toward the scene, so under-using the objects is a rational response to what the model is asked. Wen et al. (2020) call this the <em>copycat problem</em> in behaviour cloning. Training longer eases it; proprioception — which the model clearly needs — makes it worse.</p>
+  </div>
+  <div class="two">
+    <div>
+      <span class="k">Imprecise momentum</span>
+      <span class="big">4.3×</span>
+      <p>worse than copy-last on steady-motion frames. The model must learn the arm's joint-to-gripper mapping from joint velocities. More training helps; giving it momentum directly would help more.</p>
+    </div>
+    <div>
+      <span class="k">Scene under-used</span>
+      <span class="big">2.1% · 8.7%</span>
+      <p>scene-shuffle effect: with proprioception after one epoch, and visual-only after five. Both are flat across difficulty — training raises scene use everywhere but does not teach the model when it matters. The objective is still the lever.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Decisions for you</h2>
+  <ol class="decisions">
+    <li><span class="l">A</span><div>
+      <h3>What should the next objective reward?</h3>
+      <p><strong>Residual target</strong> — predict the next action minus the previous one. Copy-last becomes the zero point, so momentum comes free and only the non-momentum part is left to learn. One-line change, one epoch to test.</p>
+      <p><strong>Action chunking</strong> — predict the next 16 steps (~2 s). Over that horizon momentum cannot explain the motion, so the model has to anticipate — which needs the scene. ACT's core idea and <code>DECISIONS.md</code> §3. Needs a dataloader extension and a new causality test.</p>
+      <p class="rec">Suggested: run the residual target now; build chunking in parallel.</p>
+    </div></li>
+    <li><span class="l">B</span><div>
+      <h3>If chunking: which loss?</h3>
+      <p>At 0.14 s there is almost no ambiguity. At 2 s, trajectories branch — left or right of the bowl — and plain MSE averages the branches into a path nobody took: the regression-to-the-mean failure we diagnosed in PointWorld. ACT pairs chunking with a CVAE for exactly this; Behavior Transformers use a whole-action classifier plus residual.</p>
+      <p class="rec">Suggested: MSE first as the baseline; switch if predicted chunks fall between demonstrated paths.</p>
+    </div></li>
+    <li><span class="l">C</span><div>
+      <h3>Gripper target: observed state or recorded command?</h3>
+      <p>We train on the <em>next observed</em> gripper state. DROID also records the operator's actual command (<code>action/gripper_position</code>), which leads the physical state through the controller — the cleaner signal for learning when to grasp.</p>
+    </div></li>
+    <li><span class="l">D</span><div>
+      <h3>For your awareness — already adopted</h3>
+      <p>Clips with tracking error above 50 px are dropped (1.4%) and the rest are weighted by tracking quality instead of cut, so no lab is disproportionately removed. 32,031 further PointWorld episodes exist outside this set; they are not needed until the model stops underfitting.</p>
+    </div></li>
+  </ol>
+</section>
+
+<section>
+  <h2>Next</h2>
+  <div class="prose">
+    <p>The new baseline should be proprioception trained for five epochs, since each helps independently. Then, depending on A: the residual target, and chunking built and verified alongside it. Every run is judged against copy-last on held-out episodes, per lab, with the scene-shuffle split by difficulty and by whether the gripper is closed. The proprioception five-epoch run is already training.</p>
+  </div>
+</section>
+
+<footer>
+  Reports and code in <code>/scratch/oozak23/droid_qp/</code> — <code>out/policy_pilot_1657753/PILOT_REPORT.md</code>, <code>out/policy_proprio_1658371/proprio_comparison.md</code>, <code>out/policy_proprio_1658371/stratified_scene/</code>, build log in <code>DECODER_LOG.md</code>. All results are offline: every prediction uses the recorded demonstrator's observations, so none of this is closed-loop task success.
+</footer>
+
+</div>

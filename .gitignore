@@ -1,0 +1,15 @@
+# data, runs and logs live outside git -- see README for the data location
+out/
+out_mw/
+logs/
+*.npz
+*.npy
+*.pt
+*.pth
+*.h5
+*.mp4
+*.log
+slurm-*.out
+slurm-*.err
+__pycache__/
+*.pyc
