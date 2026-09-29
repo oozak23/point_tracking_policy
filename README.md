@@ -5,8 +5,23 @@ on the manipulated object (the scene) and points on the gripper (the robot); a t
 replica of Track-On's decoder layer reads both memories and predicts the next action.
 Data comes from DROID. Advisor: Fatma Güney, KUIS AI, Koç University.
 
-Start with `docs/DECODER_REPORT.html` (how the decoder was built, the loss, every run and test)
-and `docs/DECODER_LOG.md` (the step-by-step build log).
+## Where to start
+
+1. **Set up** (below): clone the upstream repositories, create the `track_on_r` environment,
+   write `env.local.sh`.
+2. **Run the checks** (`checks/README.md`). If they pass, your setup reads the data and builds
+   the model correctly.
+3. **Read** `docs/DECODER_REPORT.html`: how the decoder was built, the loss, every run and test.
+4. **Reproduce a reference number** on a GPU. The five-epoch proprioception run should give a
+   position error of 6.49 mm:
+   ```bash
+   source env.sh
+   $PY_TRACKON -B evaluation/57_evaluate_policy.py \
+     --checkpoint $PTP_DATA/policy_proprio_5ep_1658584/best.pt --out $PTP_OUT/repro_check
+   ```
+5. **Train** (`training/README.md`).
+
+You don't need `pipeline/`: the dataset is already built. Every folder has its own README.
 
 ## Layout
 
@@ -14,7 +29,7 @@ and `docs/DECODER_LOG.md` (the step-by-step build log).
 |---|---|
 | `droid_qp/` | the Python package: data loading, geometry, model, loss, training, evaluation |
 | `droid_qp/paths.py` | **every location the code reads or writes**, overridable by environment variables |
-| `pipeline/` | builds the dataset, in order: object points → robot points → SAM filter → merge → Track-On → action labels → ground truth → manifest → evaluation plans |
+| `pipeline/` | builds the dataset (already built; the numbers are **not** the run order, see its README) |
 | `training/` | training entry point (`52_train_policy.py`) and the job scripts for each run |
 | `evaluation/` | evaluation, memory-shuffle tests, stratified analysis, reports |
 | `checks/` | the verification suite: run it after any change |

@@ -59,7 +59,7 @@ def expected_from_report(checkpoint: Path) -> dict:
             'n': t['clean']['n_targets']}
 
 
-from droid_qp.paths import DATA  # noqa: E402
+from droid_qp.paths import DATA, OUT  # noqa: E402
 
 
 def collect(args):
@@ -235,7 +235,7 @@ def main():
     p.add_argument('--device', default='cuda')
     p.add_argument('--reuse', action='store_true', help='re-analyse saved per_frame.npz')
     args = p.parse_args()
-    args.out = args.out or args.checkpoint.parent / 'stratified_scene'
+    args.out = args.out or OUT / args.checkpoint.parent.name / 'stratified_scene'
     args.out.mkdir(parents=True, exist_ok=True)
     d = (dict(np.load(args.out / 'per_frame.npz')) if args.reuse
          else collect(args))

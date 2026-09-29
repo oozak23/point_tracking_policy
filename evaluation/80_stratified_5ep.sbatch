@@ -15,5 +15,6 @@ source "${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}/en
 set -euo pipefail
 cd "$PTP_REPO"; date; hostname
 ${PY_TRACKON} -B -u evaluation/75_stratified_scene_shuffle.py \
-  --checkpoint $PTP_OUT/policy_multiepoch_1658338/best.pt
+  --checkpoint $PTP_DATA/policy_multiepoch_1658338/best.pt \
+  --out "$PTP_OUT/policy_multiepoch_1658338/stratified_scene"
 date; echo done

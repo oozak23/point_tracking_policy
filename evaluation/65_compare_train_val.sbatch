@@ -15,7 +15,7 @@ cd "$PTP_REPO"
 export OMP_NUM_THREADS=2
 export MKL_NUM_THREADS=2
 ${PY_TRACKON} -B -u evaluation/64_compare_train_val.py \
-  --checkpoint $PTP_OUT/policy_pilot_1657753/best.pt \
+  --checkpoint $PTP_DATA/policy_pilot_1657753/best.pt \
   --plan $PTP_DATA/validation_plan_v1.json \
   --batch-size 16 --workers 4 \
   --out "$PTP_OUT/policy_fit_diagnostic_${SLURM_JOB_ID}"
