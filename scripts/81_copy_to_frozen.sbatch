@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=qp_copy_frozen
 #SBATCH --account=ai
-#SBATCH --partition=mid
+#SBATCH --partition=ai
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=8G
 #SBATCH --time=1-00:00:00
