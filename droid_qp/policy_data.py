@@ -4,7 +4,7 @@ This is the component where a silent mistake is unrecoverable: if a training sam
 contains information from after the frame being predicted, the model trains beautifully
 and cannot be deployed, and nothing crashes to tell you. Everything below is arranged so
 that reading the future is structurally impossible rather than merely avoided, and
-`scripts/45_verify_dataloader.py` asserts it empirically.
+`checks/45_verify_dataloader.py` asserts it empirically.
 
 WHAT A SAMPLE IS
 
@@ -36,7 +36,7 @@ from pathlib import Path
 import numpy as np
 
 ROOT = Path(__file__).resolve().parent.parent
-OUT = ROOT / "out"
+from .paths import DATA as OUT  # the dataset root
 
 N_OBJ = 100        # k-means k, identical in every clip
 N_ROB_MAX = 128    # RobotSampler.presample(128); survivors vary, slots do not

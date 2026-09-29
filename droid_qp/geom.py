@@ -1,6 +1,6 @@
 """Geometry over PointWorld: projection, and the rigid-motion test.
 
-Two calibrated facts, measured by scripts/00_calibrate_gripper.py over 79 windows
+Two calibrated facts, measured by pipeline/00_calibrate_gripper.py over 79 windows
 (see out/gripper_calibration.json) -- do not re-derive them, and do not guess:
 
   * `gripper_pose[:, 3:7]` is a quaternion in **XYZW** order.

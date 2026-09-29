@@ -19,8 +19,7 @@ import numpy as np
 from .geom import (attached_mask, carrying_span, find_window, project,
                    release_to_pw_step, rigid_residuals, window_bounds)
 
-PW_FLOWS = Path("/frozen/avg/bora_data/droid_datasets/pointworld_droid_restored"
-                "/droid/flows-fs-optimized")
+from .paths import PW_FLOWS
 
 MIN_ATTACHED = 20
 
@@ -82,7 +81,7 @@ def attached_cluster_2d(video_id: str, release_frame: int,
         out["reason"] = "gripper_static_undefined"
         return out
 
-    # Same clipping as scripts/05_score_points.py, so the corrector and the scorer
+    # Same clipping as analysis/05_score_points.py, so the corrector and the scorer
     # evaluate the identical frame -- otherwise the pipeline could "fix" a mask against
     # one frame and be graded against another.
     local = int(np.clip(local, span[0], span[1]))

@@ -4,7 +4,7 @@ then turn poses into the deltas a policy is actually supervised on.
 Three things here are easy to get wrong and expensive to find later.
 
 1. QUATERNION ORDER IS XYZW.
-   Measured over 79 windows (scripts/00_calibrate_gripper.py): 0.00 deg median geodesic
+   Measured over 79 windows (pipeline/00_calibrate_gripper.py): 0.00 deg median geodesic
    error vs URDF FK for XYZW, against 166.31 deg for WXYZ. Reading it as WXYZ still
    produces plausible-looking numbers, so this is silent. `geom.quat_to_R` already
    encodes it; never re-derive it here.

@@ -15,9 +15,8 @@ A4000 -- run those clips on SLURM. `plan_clips` splits a clip list on that bound
 from __future__ import annotations
 
 import sys
-from pathlib import Path
 
-MOLMO_MOTION = Path("/scratch/oozak23/molmo-motion")
+from .paths import MOLMO_MOTION
 _SAM3_DIR = MOLMO_MOTION / "data_generation" / "third_party" / "sam3"
 if str(_SAM3_DIR) not in sys.path:
     sys.path.insert(0, str(_SAM3_DIR))

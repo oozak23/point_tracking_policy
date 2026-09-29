@@ -36,19 +36,18 @@ default, not a settled fact.
 CAUSALITY
 
 The FIFO holds only past frames and is rolled after the output is produced, so frame t
-never sees t+1. `scripts/46_verify_replica.py` asserts this by perturbation rather than by
+never sees t+1. `checks/46_verify_replica.py` asserts this by perturbation rather than by
 reading the code.
 """
 from __future__ import annotations
 
 import sys
-from pathlib import Path
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-TRACK_ON = Path("/scratch/oozak23/track_on")
+from .paths import TRACK_ON
 if str(TRACK_ON) not in sys.path:
     sys.path.insert(0, str(TRACK_ON))
 

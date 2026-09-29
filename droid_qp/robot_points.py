@@ -11,7 +11,7 @@ projection step has to exist somewhere and this is it. Nothing is copied from th
 Everything below is exact rather than fitted:
 
   * FK reproduces PointWorld's own `gripper_pose` to **0.0000 m** over 79 windows
-    (scripts/00_calibrate_gripper.py) -- so the URDF chain, the panda_joint1..7 mapping
+    (pipeline/00_calibrate_gripper.py) -- so the URDF chain, the panda_joint1..7 mapping
     and the Robotiq mimic joints are verified end to end.
   * `gripper_pose` is `panda_link8`, the FLANGE. Fingertips are the `*_inner_finger`
     links, 0.125 m further out. Never treat `gripper_pose` as "where the gripper grasps".
@@ -26,26 +26,23 @@ fixed-dimension policy input that stable index semantics matters -- a k-means po
 has arbitrary per-clip ordering and is close to useless as a consistent action
 representation.
 
-Needs pytorch_kinematics -> /home/oozak23/.conda/envs/pointworld-env/bin/python, which
+Needs pytorch_kinematics -> $PY_POINTWORLD, which
 has no `transformers`; stage results to .npz for the tracking step.
 """
 from __future__ import annotations
 
 import sys
-from pathlib import Path
 
 import numpy as np
 import torch
 
-POINTWORLD = Path("/scratch/oozak23/PointWorld")
+from .paths import POINTWORLD, PW_FLOWS  # noqa: F401  (PW_FLOWS re-exported for pipeline scripts)
 if str(POINTWORLD) not in sys.path:
     sys.path.insert(0, str(POINTWORLD))
 
 from .geom import project, window_bounds
 
 URDF = POINTWORLD / "assets/franka_description/franka_panda_robotiq_2f85.urdf"
-PW_FLOWS = Path("/frozen/avg/bora_data/droid_datasets/pointworld_droid_restored"
-                "/droid/flows-fs-optimized")
 
 PANDA_JOINTS = [f"panda_joint{i}" for i in range(1, 8)]
 

@@ -19,7 +19,7 @@ from pathlib import Path
 
 import numpy as np
 
-TRACKS_TAR = Path("/frozen/avg/ozan/molmo-motion-1m/droid/tracks/tracks-0000.tar")
+from .paths import MM_TRACKS_TAR as TRACKS_TAR
 
 
 def load_reference_tracks(video_ids: set[str], tar_path: Path = TRACKS_TAR) -> dict:

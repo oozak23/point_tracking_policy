@@ -18,8 +18,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-RAW_ROOT = Path("/frozen/avg/bora_data/droid_datasets/droid_raw_full_v2/droid_raw/1.0.1")
-ANN_DIR = Path("/scratch/oozak23/droid/annotations")
+from .paths import DATA, DROID_ANNOTATIONS as ANN_DIR, DROID_RAW as RAW_ROOT
 
 # MolmoMotion's own subsample factor: source frame -> THEIR release frame. This is a
 # property of the published dataset, not of our pipeline, so it is fixed at 4 and must
@@ -94,12 +93,12 @@ def load_manifest(path: Path | None = None) -> list[ClipRecord]:
     """Load the clips already known to resolve, from out/manifest.json.
 
     Prefer this over `load_clips()` + `.exists()`: stat-ing 23,532 paths on the beegfs
-    mount takes ~25 minutes, and scripts/01 has already done it once and cached the
+    mount takes ~25 minutes, and pipeline/01_build_manifest.py has already done it once and cached the
     answer (all 23,532 resolve, so nothing is lost by trusting it).
     """
-    path = path or (Path(__file__).resolve().parent.parent / "out" / "manifest.json")
+    path = path or (DATA / "manifest.json")
     if not Path(path).exists():
-        raise FileNotFoundError(f"{path} -- run scripts/01_build_manifest.py first")
+        raise FileNotFoundError(f"{path} -- run pipeline/01_build_manifest.py first")
     rows = json.load(open(path))
     src_map = json.load(open(ANN_DIR / "droid_videos_index.json"))["video_id_to_source_path"]
     return [
