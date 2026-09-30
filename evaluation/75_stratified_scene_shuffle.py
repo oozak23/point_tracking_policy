@@ -70,6 +70,15 @@ def collect(args):
     if cfg.get('proprioception', False):
         from droid_qp.policy_proprio import ProprioPolicyWindows, ProprioActionPolicy
         data_cls, model_cls = ProprioPolicyWindows, ProprioActionPolicy
+    if cfg.get('coords', False) or cfg.get('future_points', False):
+        import functools
+        from droid_qp.point_policy import COORD_RECIPE, FUTURE_RECIPE, PointPolicy, PointPolicyWindows
+        if ((cfg.get('coords') and cfg.get('coords_recipe') != COORD_RECIPE)
+                or (cfg.get('future_points') and cfg.get('future_recipe') != FUTURE_RECIPE)):
+            raise ValueError('unsupported point-policy recipe')
+        data_cls = PointPolicyWindows
+        model_cls = functools.partial(PointPolicy, coords=cfg.get('coords', False),
+                                      future=cfg.get('future_points', False))
     manifest = DATA / 'dataset_manifest.json'
     plan = json.loads(args.plan.read_text())
     if plan['manifest_sha256'] != hashlib.sha256(manifest.read_bytes()).hexdigest():
