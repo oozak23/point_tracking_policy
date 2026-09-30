@@ -29,7 +29,7 @@ points do not need the ~1 px accuracy that geometric conversion needs.
 
 - **Targets:** FK displacement of each point: FK position at t+j minus FK position at t, for
   j = 1…16. Exact, and unaffected by tracking error. Point identities come from the FK index.
-- **Masked** (left out of the loss): targets outside the image (6.4% of point-frames in the
+- **Masked** (left out of the loss): targets whose start or end position is outside the image (6.4% of point-frames in the
   validation windows), behind the camera, or past the end of the stored clip. A target frame must
   exist in the file; the validity flag alone is not enough.
 - **Point loss:** mean over valid points and horizons. Each horizon j is divided by its own typical
@@ -84,13 +84,26 @@ Run D additionally:
 
 ## Order of work
 
-1. No GPU: point-prediction baselines; per-horizon loss scales (training data only).
-2. Current coordinates as an input (needed by B, D, E).
-3. Run B.
-4. Future-point head, plan embedding, two-stage training → runs D and E.
-5. Action chunking: future action targets and per-step evaluation → run C.
+**One job at a time: nothing runs in parallel.** Code lives on the branch `point-policy-ozan` and is
+merged into `main` only after its checks pass.
 
-Every new component gets checks in `checks/` and must pass the overfit gate before a full run.
+1. **No GPU:** point-prediction baselines; per-horizon loss scales (training data only).
+2. **Build** current coordinates as an input, the future-point head, the plan embedding and
+   two-stage training, each with checks in `checks/`.
+3. **Overfit gate** for the new model: memorise 10 fixed windows, points and actions both, the
+   same gate every model has passed before a real run.
+4. **Pilot of D: 1 epoch in total**, split like the full run (about 150 updates pre-training
+   part 1, then about 600 updates of the full model). It checks that the model *works*: losses
+   fall, no NaNs, part 1 beats "points don't move", speed and memory are acceptable. It does
+   **not** decide whether the model is better: one-epoch results have misled before (the scene
+   effect was +4.1% after one epoch and +8.7% after five).
+   **Stop conditions:** losses do not fall or become NaN, or part 1 is no better than "points don't
+   move" at any horizon. Otherwise continue.
+5. **Run D, 5 epochs** (1 + 4).
+6. **Run E**: 4 epochs from D's pre-training checkpoint, part 1 frozen.
+7. **Run B**: coordinates only, 5 epochs.
+8. **Build** action chunking (future action targets, per-step evaluation), with checks and the
+   overfit gate → **run C**, 5 epochs.
 
 ## Follow-up, decided now
 
