@@ -39,6 +39,11 @@ def main():
     p.add_argument('--validation-plan', type=Path)
     p.add_argument('--train-eval-plan', type=Path, help='optional fixed training windows evaluated alongside validation')
     p.add_argument('--proprioception', action='store_true', help='add current q, recorded qdot and gripper state at the readout')
+    p.add_argument('--coords', action='store_true', help="add each robot point's tracked position and visibility to its token (docs/POINT_POLICY_PLAN.md)")
+    p.add_argument('--future-points', action='store_true', help="predict each robot point's displacement over the next 16 frames and feed it to the action head")
+    p.add_argument('--point-weight', type=float, default=1.0, help='lambda: weight of the future-point loss')
+    p.add_argument('--pretrain-steps', type=int, default=0, help='first N updates train the future-point head alone (point loss only)')
+    p.add_argument('--point-scales', type=Path, default=DATA / 'point_loss_scales.json')
     p.add_argument('--workers', type=int, default=0)
     p.add_argument('--seed', type=int, default=2026)
     p.add_argument('--lr', type=float, default=3e-4)
@@ -54,6 +59,19 @@ def main():
     if args.proprioception:
         from droid_qp.policy_proprio import ProprioPolicyWindows, ProprioActionPolicy, PROPRIO_RECIPE
         data_cls, model_cls = ProprioPolicyWindows, ProprioActionPolicy
+    points_model = args.coords or args.future_points
+    if points_model:
+        if args.proprioception:
+            p.error('--coords/--future-points are not combined with --proprioception')
+        import functools
+        from droid_qp.point_policy import (COORD_RECIPE, FUTURE_RECIPE, PointPolicy, PointPolicyLoss,
+                                           PointPolicyWindows, evaluate_points, point_train_step)
+        data_cls = PointPolicyWindows
+        model_cls = functools.partial(PointPolicy, coords=args.coords, future=args.future_points)
+    if args.pretrain_steps and not args.future_points:
+        p.error('--pretrain-steps needs --future-points')
+    if args.pretrain_steps < 0 or args.pretrain_steps >= args.steps or args.point_weight <= 0:
+        p.error('invalid --pretrain-steps or --point-weight')
     if min(args.steps, args.batch_size, args.clips, args.eval_every, args.val_clips, args.T_win, args.M, args.layers) <= 0:
         p.error('counts must be positive')
     if args.workers < 0 or args.lr <= 0 or args.warmup < 0 or args.warmup > args.steps:
@@ -78,7 +96,11 @@ def main():
         raise FileExistsError('run directory already has a config; choose a new directory or --resume')
     manifest = DATA / 'dataset_manifest.json'
     scales = DATA / 'policy_loss_scales.json'
-    criterion = PolicyLoss.from_json(scales, manifest=manifest).to(device)
+    if args.future_points:
+        criterion = PointPolicyLoss.from_files(scales, args.point_scales, manifest=manifest,
+                                               point_weight=args.point_weight).to(device)
+    else:
+        criterion = PolicyLoss.from_json(scales, manifest=manifest).to(device)
     data = data_cls(T_win=args.T_win, M=args.M, cache_clips=max(args.clips, 8), seed=args.seed)
     fixed = select_overfit_windows(data, args.clips, args.seed) if args.mode == 'overfit' else None
     dataset = TrainingWindows(data, fixed=fixed, seed=args.seed)
@@ -112,6 +134,11 @@ def main():
         cfg['validation_plan_sha256'] = hashlib.sha256(args.validation_plan.read_bytes()).hexdigest()
     if args.proprioception:
         cfg['proprioception_recipe'] = PROPRIO_RECIPE
+    if args.coords:
+        cfg['coords_recipe'] = COORD_RECIPE
+    if args.future_points:
+        cfg['future_recipe'] = FUTURE_RECIPE
+        cfg['point_scale_sha256'] = hashlib.sha256(args.point_scales.read_bytes()).hexdigest()
     train_eval_loader = None
     if args.train_eval_plan:
         train_plan = json.loads(args.train_eval_plan.read_text())
@@ -148,6 +175,10 @@ def main():
                 raise ValueError(f'resume evaluation plan mismatch: {key}')
         if ck['config'].get('proprioception', False) != args.proprioception or ck['config'].get('proprioception_recipe') != cfg.get('proprioception_recipe'):
             raise ValueError('resume proprioception configuration mismatch')
+        for key in ('coords', 'future_points', 'point_weight', 'pretrain_steps', 'coords_recipe',
+                    'future_recipe', 'point_scale_sha256'):
+            if ck['config'].get(key) != cfg.get(key):
+                raise ValueError(f'resume point-policy configuration mismatch: {key}')
         model.load_state_dict(ck['model'])
         criterion.load_state_dict(ck['criterion'])
         optimizer.load_state_dict(ck['optimizer'])
@@ -170,15 +201,23 @@ def main():
     def assess():
         nonlocal best, initial
         eval_fn = evaluate_validation if args.mode == 'train' else evaluate
-        metrics = eval_fn(model, criterion, eval_loader, device, amp=args.amp)
+        if args.future_points and args.mode == 'overfit':
+            metrics = evaluate_points(model, criterion, eval_loader, device, amp=args.amp)
+        else:
+            metrics = eval_fn(model, criterion, eval_loader, device, amp=args.amp)
+            if args.future_points:        # validation: action metrics above, point metrics here
+                pm = evaluate_points(model, criterion, eval_loader, device, amp=args.amp)
+                metrics.update(points=pm['points'], total=pm['total'], point_px=pm['point_px'])
         if initial is None:
             initial = metrics
-        improved = metrics['loss'] < best
-        best = min(best, metrics['loss'])
+        score = metrics['total'] if args.future_points else metrics['loss']
+        improved = score < best
+        best = min(best, score)
         gate = (args.mode == 'overfit' and metrics['position'] < 0.02 and
                 metrics['rotation'] < 0.02 and metrics['gripper'] < 0.02 and
                 metrics['loss'] < 0.05 and metrics['gripper_accuracy'] >= 0.995 and
-                metrics['transition_frame_accuracy'] == 1.)
+                metrics['transition_frame_accuracy'] == 1. and
+                (not args.future_points or metrics['points'] < 0.02))
         event = {'event': eval_name, 'step': step, 'epoch': epoch,
                  'elapsed_s': time.monotonic() - started, 'metrics': metrics, 'overfit_gate': gate}
         record(event)
@@ -220,7 +259,11 @@ def main():
             model.train()
             batch = to_device(batch, device)
             used_lr = optimizer.param_groups[0]['lr']
-            terms, grad_norm = train_step(model, criterion, batch, optimizer, amp=args.amp)
+            if args.future_points:
+                stage = 'points' if step < args.pretrain_steps else 'joint'
+                terms, grad_norm = point_train_step(model, criterion, batch, optimizer, stage=stage, amp=args.amp)
+            else:
+                terms, grad_norm = train_step(model, criterion, batch, optimizer, amp=args.amp)
             if grad_norm is None:
                 skipped += 1
                 if skipped >= len(dataset):
@@ -233,7 +276,9 @@ def main():
                 record({'event': 'train', 'step': step, 'epoch': epoch,
                         'elapsed_s': time.monotonic() - started,
                         'lr': used_lr, 'grad_norm_before_clip': grad_norm,
-                        'losses': {k: float(terms[k].detach()) for k in ('loss', 'position', 'rotation', 'gripper')},
+                        'losses': {k: float(terms[k].detach()) for k in ('loss', 'position', 'rotation', 'gripper', 'points', 'total')
+                                   if k in terms},
+                        **({'stage': stage} if args.future_points else {}),
                         'peak_gpu_gb': torch.cuda.max_memory_allocated() / 1e9 if device.type == 'cuda' else None})
             if step % args.eval_every == 0 or step == args.steps:
                 if assess():
