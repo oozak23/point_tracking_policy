@@ -170,6 +170,10 @@ class PointPolicy(ActionPolicy):
             now = feats[:, -T:].to(tokens.dtype)
             future = self.future_head(torch.cat([tokens, now], -1))          # (B, T, N, 2H), scaled units
             plan = future if self.plan_grad else future.detach()
+            if 'oracle_plan' in batch:
+                # Evaluation only (evaluation/57_...): the RECORDED future replaces the prediction
+                # wherever a target exists, giving the "perfect plan" upper bound. Never in training.
+                plan = torch.where(batch['oracle_mask'], batch['oracle_plan'].to(plan.dtype), plan)
             tokens = tokens + self.plan_embed(plan)
             future = future.unflatten(-1, (self.horizon, 2))
         pred = self.head(self.readout(tokens, pad))
