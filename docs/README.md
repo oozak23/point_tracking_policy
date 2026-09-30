@@ -26,6 +26,7 @@ Each fixes the pass/fail criteria before the results exist, so thresholds can't 
 | `PILOT_PLAN.md` | the first one-epoch run, and **the three gates every run is judged by** |
 | `PROPRIO_PILOT_PLAN.md` | the one-epoch run with proprioception |
 | `MULTIEPOCH_PLAN.md` | the five-epoch runs |
+| `POINT_POLICY_PLAN.md` | the point-prediction policy (ATM-style) and its controls: runs B–E |
 
 ## Results of individual experiments
 
