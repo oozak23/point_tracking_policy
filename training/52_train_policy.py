@@ -44,6 +44,7 @@ def main():
     p.add_argument('--point-weight', type=float, default=1.0, help='lambda: weight of the future-point loss')
     p.add_argument('--pretrain-steps', type=int, default=0, help='first N updates train the future-point head alone (point loss only)')
     p.add_argument('--point-scales', type=Path, default=DATA / 'point_loss_scales.json')
+    p.add_argument('--action-chunk', type=int, default=0, help='predict the next K actions per frame instead of one (run C); 0 = off')
     p.add_argument('--workers', type=int, default=0)
     p.add_argument('--seed', type=int, default=2026)
     p.add_argument('--lr', type=float, default=3e-4)
@@ -68,6 +69,14 @@ def main():
                                            PointPolicyWindows, evaluate_points, point_train_step)
         data_cls = PointPolicyWindows
         model_cls = functools.partial(PointPolicy, coords=args.coords, future=args.future_points)
+    if args.action_chunk:
+        if args.proprioception or points_model or args.action_chunk < 2:
+            p.error('--action-chunk K (K >= 2) is not combined with --proprioception, --coords or --future-points')
+        import functools
+        from droid_qp.chunk_policy import (CHUNK_RECIPE, ChunkPolicyLoss, ChunkPolicyWindows,
+                                           chunk_train_step, evaluate_chunk)
+        data_cls = functools.partial(ChunkPolicyWindows, horizon=args.action_chunk)
+        model_cls = functools.partial(ActionPolicy, k=args.action_chunk)
     if args.pretrain_steps and not args.future_points:
         p.error('--pretrain-steps needs --future-points')
     if args.pretrain_steps < 0 or args.pretrain_steps >= args.steps or args.point_weight <= 0:
@@ -99,6 +108,8 @@ def main():
     if args.future_points:
         criterion = PointPolicyLoss.from_files(scales, args.point_scales, manifest=manifest,
                                                point_weight=args.point_weight).to(device)
+    elif args.action_chunk:
+        criterion = ChunkPolicyLoss.from_json(scales, manifest=manifest).to(device)
     else:
         criterion = PolicyLoss.from_json(scales, manifest=manifest).to(device)
     data = data_cls(T_win=args.T_win, M=args.M, cache_clips=max(args.clips, 8), seed=args.seed)
@@ -134,6 +145,8 @@ def main():
         cfg['validation_plan_sha256'] = hashlib.sha256(args.validation_plan.read_bytes()).hexdigest()
     if args.proprioception:
         cfg['proprioception_recipe'] = PROPRIO_RECIPE
+    if args.action_chunk:
+        cfg['chunk_recipe'] = CHUNK_RECIPE
     if args.coords:
         cfg['coords_recipe'] = COORD_RECIPE
     if args.future_points:
@@ -176,7 +189,7 @@ def main():
         if ck['config'].get('proprioception', False) != args.proprioception or ck['config'].get('proprioception_recipe') != cfg.get('proprioception_recipe'):
             raise ValueError('resume proprioception configuration mismatch')
         for key in ('coords', 'future_points', 'point_weight', 'pretrain_steps', 'coords_recipe',
-                    'future_recipe', 'point_scale_sha256'):
+                    'future_recipe', 'point_scale_sha256', 'action_chunk', 'chunk_recipe'):
             if ck['config'].get(key) != cfg.get(key):
                 raise ValueError(f'resume point-policy configuration mismatch: {key}')
         model.load_state_dict(ck['model'])
@@ -208,16 +221,20 @@ def main():
             if args.future_points:        # validation: action metrics above, point metrics here
                 pm = evaluate_points(model, criterion, eval_loader, device, amp=args.amp)
                 metrics.update(points=pm['points'], total=pm['total'], point_px=pm['point_px'])
+        if args.action_chunk:           # first-step metrics above; all K steps here
+            metrics.update(evaluate_chunk(model, criterion, eval_loader, device, amp=args.amp))
         if initial is None:
             initial = metrics
-        score = metrics['total'] if args.future_points else metrics['loss']
+        score = metrics['total'] if args.future_points else metrics['chunk_loss'] if args.action_chunk else metrics['loss']
         improved = score < best
         best = min(best, score)
         gate = (args.mode == 'overfit' and metrics['position'] < 0.02 and
                 metrics['rotation'] < 0.02 and metrics['gripper'] < 0.02 and
                 metrics['loss'] < 0.05 and metrics['gripper_accuracy'] >= 0.995 and
                 metrics['transition_frame_accuracy'] == 1. and
-                (not args.future_points or metrics['points'] < 0.02))
+                (not args.future_points or metrics['points'] < 0.02) and
+                (not args.action_chunk or (metrics['chunk_loss'] < 0.05 and metrics['chunk_position'] < 0.02
+                                           and metrics['chunk_rotation'] < 0.02 and metrics['chunk_gripper'] < 0.02)))
         event = {'event': eval_name, 'step': step, 'epoch': epoch,
                  'elapsed_s': time.monotonic() - started, 'metrics': metrics, 'overfit_gate': gate}
         record(event)
@@ -262,6 +279,8 @@ def main():
             if args.future_points:
                 stage = 'points' if step < args.pretrain_steps else 'joint'
                 terms, grad_norm = point_train_step(model, criterion, batch, optimizer, stage=stage, amp=args.amp)
+            elif args.action_chunk:
+                terms, grad_norm = chunk_train_step(model, criterion, batch, optimizer, amp=args.amp)
             else:
                 terms, grad_norm = train_step(model, criterion, batch, optimizer, amp=args.amp)
             if grad_norm is None:

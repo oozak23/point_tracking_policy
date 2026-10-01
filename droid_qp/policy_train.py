@@ -16,11 +16,13 @@ from .policy_data import PolicyWindows
 class ActionPolicy(nn.Module):
     """Only trainable modules; the frozen tracker is never instantiated by training."""
 
-    def __init__(self, D=256, layers=3, M=24, scene_slots=24, checkpoint=True, dropout=0.1):
+    def __init__(self, D=256, layers=3, M=24, scene_slots=24, checkpoint=True, dropout=0.1, k=1):
         super().__init__()
         self.memory = ActionMemory(D=D, layers=layers, M=M, scene_slots=scene_slots,
                                    checkpoint=checkpoint)
-        self.readout = ActionReadout(D=D, k=1)
+        # k readout queries -> k actions per frame. k=1: the next action. k>1: an action chunk,
+        # query j predicting the action at frame t+j (droid_qp/chunk_policy.py).
+        self.readout = ActionReadout(D=D, k=k)
         self.head = ActionHead(D=D)
         for module in self.modules():
             if isinstance(module, nn.Dropout):

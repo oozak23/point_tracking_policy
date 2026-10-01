@@ -79,6 +79,13 @@ def collect(args):
         data_cls = PointPolicyWindows
         model_cls = functools.partial(PointPolicy, coords=cfg.get('coords', False),
                                       future=cfg.get('future_points', False))
+    if cfg.get('action_chunk', 0):      # the stratified test uses the first step only
+        import functools
+        from droid_qp.chunk_policy import CHUNK_RECIPE, ChunkPolicyWindows
+        if cfg.get('chunk_recipe') != CHUNK_RECIPE:
+            raise ValueError('unsupported chunk recipe')
+        data_cls = functools.partial(ChunkPolicyWindows, horizon=cfg['action_chunk'])
+        model_cls = functools.partial(ActionPolicy, k=cfg['action_chunk'])
     manifest = DATA / 'dataset_manifest.json'
     plan = json.loads(args.plan.read_text())
     if plan['manifest_sha256'] != hashlib.sha256(manifest.read_bytes()).hexdigest():

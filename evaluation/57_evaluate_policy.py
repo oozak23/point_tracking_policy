@@ -54,6 +54,15 @@ def main():
             raise ValueError('unsupported point-policy recipe')
         data_cls = PointPolicyWindows
         model_cls = functools.partial(PointPolicy, coords=cfg.get('coords', False), future=future)
+    chunk = cfg.get('action_chunk', 0)
+    if chunk:
+        from droid_qp.action_decoder import rotation_6d_to_matrix
+        from droid_qp.chunk_policy import CHUNK_RECIPE, ChunkPolicyLoss, ChunkPolicyWindows, compose
+        from droid_qp.chunk_policy import REPORT_HORIZONS as CHUNK_HORIZONS
+        if cfg.get('chunk_recipe') != CHUNK_RECIPE:
+            raise ValueError('unsupported chunk recipe')
+        data_cls = functools.partial(ChunkPolicyWindows, horizon=chunk)
+        model_cls = functools.partial(ActionPolicy, k=chunk)
     manifest = DATA / 'dataset_manifest.json'
     plan = json.loads(args.plan.read_text())
     if plan['manifest_sha256'] != hashlib.sha256(manifest.read_bytes()).hexdigest():
@@ -69,6 +78,8 @@ def main():
             raise ValueError('point loss scales differ from the ones the checkpoint was trained with')
         criterion = PointPolicyLoss.from_files(DATA / 'policy_loss_scales.json', point_scales, manifest=manifest,
                                                point_weight=cfg['point_weight']).to(device)
+    elif chunk:
+        criterion = ChunkPolicyLoss.from_json(DATA / 'policy_loss_scales.json', manifest=manifest).to(device)
     else:
         criterion = PolicyLoss.from_json(DATA / 'policy_loss_scales.json', manifest=manifest).to(device)
     criterion.load_state_dict(ck['criterion'])
@@ -113,6 +124,32 @@ def main():
             st = criterion(sp, sub['target'], mask[idx], sub['weight'])
             labs[name].setdefault(lab, ValidationMetrics()).add(sp, sub, st, anchor=anchor)
 
+    chunk_sums = {}
+
+    def add_chunk(name, pred, batch, anchor=False):
+        """Endpoint error after h chained actions, per horizon, on this condition. On the clean
+        condition also the two trivial predictions, on exactly the same targets."""
+        if not chunk:
+            return
+        y = batch['chunk_target'].float()
+        ok = (batch['chunk_valid'] & (batch['weight'][:, None, None] > 0)).cumprod(-1).bool()
+        ok = ok & batch['previous_valid'][..., None]
+        if anchor:
+            ok = ok.clone()
+            ok[:, :-1] = False
+        true_p, _ = compose(y[..., :3], rotation_6d_to_matrix(y[..., 3:9]))
+        prev = batch['previous_action'].float()
+        rows = {name: compose(pred['delta_pos_body'].float(), pred['delta_rotmat_body'].float())[0]}
+        if name == 'clean':
+            rows['zero'] = torch.zeros_like(true_p)
+            rows['repeat_last'] = compose(prev[..., None, :3].expand(-1, -1, chunk, -1),
+                                          rotation_6d_to_matrix(prev[..., 3:9])[..., None, :, :].expand(-1, -1, chunk, -1, -1))[0]
+        for key, p_hat in rows.items():
+            err = torch.linalg.vector_norm(p_hat - true_p, dim=-1) * 1000
+            s, n = chunk_sums.setdefault(key, (np.zeros(chunk), np.zeros(chunk)))
+            s += torch.where(ok, err, torch.zeros_like(err)).sum((0, 1)).double().cpu().numpy()
+            n += ok.sum((0, 1)).double().cpu().numpy()
+
     offset = 0
     with torch.no_grad():
         for batch in loader:
@@ -121,6 +158,7 @@ def main():
                 pred = model(batch)
             add('clean', pred, batch)
             add_points('clean', pred, batch)
+            add_chunk('clean', pred, batch)
             for i, vid in enumerate(batch['video_id']):
                 np.savez(args.out/'predictions'/f'{vid}.npz', start=int(batch['start'][i]),
                          delta_pos_body=pred['delta_pos_body'][i, :, 0].float().cpu().numpy(),
@@ -142,6 +180,9 @@ def main():
                 add_points('scene_shuffle', scene_pred, batch)
                 add_points('clean_anchor', pred, batch, anchor=True)
                 add_points('scene_anchor', scene_pred, batch, anchor=True)
+                add_chunk('scene_shuffle', scene_pred, batch)
+                add_chunk('clean_anchor', pred, batch, anchor=True)
+                add_chunk('scene_anchor', scene_pred, batch, anchor=True)
                 mappings = []
                 for i, r in enumerate(records):
                     donor_r = plan['records'][r['donor_row']]
@@ -164,6 +205,7 @@ def main():
                     history_pred = model(history_batch)
                 add('robot_history_anchor', history_pred, batch, anchor=True)
                 add_points('robot_history_anchor', history_pred, batch, anchor=True)
+                add_chunk('robot_history_anchor', history_pred, batch, anchor=True)
                 if future:          # perfect-plan upper bound: the recorded future replaces the plan
                     target = batch['fut_disp'].float() / criterion.point_scales[:H, None]
                     have = (batch['fut_valid'] & batch['robot_pad'][:, None, :, None])[..., None].expand_as(target)
@@ -194,6 +236,15 @@ def main():
                           if plan['records'][r['donor_row']]['lab'] != r['lab']))),
                   limitation=plan['limitation'],
                   ablation_caveat='Shuffles change joint compatibility. Current frozen robot tokens still contain prior tracking context.')
+    if chunk:
+        mm = {name: {str(h): float(s[h - 1] / max(n[h - 1], 1)) for h in CHUNK_HORIZONS if h <= chunk}
+              for name, (s, n) in chunk_sums.items()}
+        result['chunk_endpoint_mm'] = mm
+        if 'scene_shuffle' in mm:
+            result['chunk_scene_effect'] = {h: mm['scene_shuffle'][h] / mm['clean'][h] - 1 for h in mm['clean']}
+        result['chunk_caveat'] = ('Endpoint error: where the gripper is after h chained predicted actions, against the '
+                                  'recorded ones, all from observations up to frame t. First-step metrics elsewhere in '
+                                  'this report are directly comparable with one-step runs.')
     if future:
         px = {name: {str(j): float(s[j - 1] / max(n[j - 1], 1)) for j in REPORT_HORIZONS}
               for name, (s, n) in point_sums.items()}
