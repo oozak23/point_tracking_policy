@@ -21,6 +21,25 @@ D +7.1 … +5.1%; flat in every run.
 Per epoch (action error, mm): A 10.21, 9.90, 9.27, 8.68, 8.49 · B 10.36, 9.99, 9.26, 8.66, 8.48 ·
 D 13.69 (pre-training), 10.43, 10.11, 9.98, 9.93.
 
+## Run C: action chunking (job 1724301)
+
+16 actions per frame instead of one, run A's recipe otherwise. Overfit gate passed at update 500.
+
+| | first step | 4 steps | 8 steps | 16 steps |
+|---|---:|---:|---:|---:|
+| C, endpoint error after chaining h actions | 10.6 mm | 41.4 | 76.1 | **128.9** |
+| no motion | 13.0 | 49.6 | 90.8 | 149.6 |
+| repeat the last action | **4.6** | **36.9** | 97.1 | 225.6 |
+| **scene-shuffle effect on C's prediction** | +7.8% | +8.6% | **+10.6%** | **+11.3%** |
+
+First-step action error 10.56 mm against A's 8.49; gripper F1 0.50, timing cost 4.62. Gates: 0 / 3.
+Scene effect by difficulty (first step): +7.7 … +6.8%, flat as in every other run.
+
+**The scene effect grows with the horizon** (+7.8% at one step to +11.3% at sixteen) and crosses the
+10% gate at 8 and 16 steps. The same pattern as run D's point plan (+11.1% at 16 frames): the longer
+the horizon, the more the object points matter. The cost is the near term: chunking is 2 mm worse
+than A on the first step and loses to "repeat the last action" out to 4 steps.
+
 ## Run D's future points
 
 | frames ahead | 1 | 4 | 8 | 16 |
